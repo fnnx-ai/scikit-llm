@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, TypeVar, Type
+from pydantic import BaseModel
 
+T = TypeVar('T', bound=BaseModel)
 
 class BaseTextCompletionMixin(ABC):
     @abstractmethod
@@ -11,6 +13,11 @@ class BaseTextCompletionMixin(ABC):
     @abstractmethod
     def _convert_completion_to_str(self, completion: Any):
         """Converts a completion object to a string"""
+        pass
+
+    @abstractmethod
+    def _get_parsed_completion(self, output_model: Type[T], **kwargs) -> T:
+        """Gets a chat completion parsed into the specified Pydantic model"""
         pass
 
 
