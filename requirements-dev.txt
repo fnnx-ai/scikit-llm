@@ -6,3 +6,6 @@ docformatter
 interrogate
 numpy
 pandas
+pytest>=8.4.2
+pytest-mock>=3.15.1
+python-dotenv>=1.2.1

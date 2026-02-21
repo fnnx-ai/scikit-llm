@@ -7,4 +7,5 @@ OPENAI_EMBEDDING_MODEL = "text-embedding-ada-002"
 ANTHROPIC_CLAUDE_MODEL = "claude-3-haiku-20240307"
 
 # Vertex AI models
-VERTEX_DEFAULT_MODEL = "text-bison@002"
+TEXT_BISON_MODEL = "text-bison@002"
+VERTEX_GEMINI_MODEL = "gemini-2.5-flash"

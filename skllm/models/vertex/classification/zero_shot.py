@@ -5,7 +5,7 @@ from skllm.models._base.classifier import (
     MultiLabelMixin as _MultiLabelMixin,
 )
 from typing import Optional
-from skllm.model_constants import TEXT_BISON_MODEL
+from skllm.model_constants import TEXT_BISON_MODEL, VERTEX_GEMINI_MODEL
 
 
 class ZeroShotVertexClassifier(
@@ -13,7 +13,7 @@ class ZeroShotVertexClassifier(
 ):
     def __init__(
         self,
-        model: str = TEXT_BISON_MODEL,
+        model: str = VERTEX_GEMINI_MODEL,
         default_label: str = "Random",
         prompt_template: Optional[str] = None,
         **kwargs,
@@ -43,7 +43,7 @@ class MultiLabelZeroShotVertexClassifier(
 ):
     def __init__(
         self,
-        model: str = TEXT_BISON_MODEL,
+        model: str = VERTEX_GEMINI_MODEL,
         default_label: str = "Random",
         prompt_template: Optional[str] = None,
         max_labels: Optional[int] = 5,
