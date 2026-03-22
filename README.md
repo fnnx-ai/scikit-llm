@@ -4,7 +4,7 @@
 
 # Scikit-LLM: Scikit-Learn Meets Large Language Models
 
-Seamlessly integrate powerful language models like ChatGPT into scikit-learn for enhanced text analysis tasks.
+Seamlessly integrate powerful language models like ChatGPT, Claude, and MiniMax into scikit-learn for enhanced text analysis tasks.
 
 ## Installation 💾
 
@@ -59,6 +59,23 @@ clf = ZeroShotGPTClassifier(model="gpt-4")
 clf.fit(X,y)
 clf.predict(X)
 ```
+
+### Using MiniMax
+
+```python
+from skllm.config import SKLLMConfig
+from skllm.models.minimax.classification.zero_shot import ZeroShotMiniMaxClassifier
+
+# Configure the credentials
+SKLLMConfig.set_minimax_key("<YOUR_MINIMAX_API_KEY>")
+
+# Initialize the model and make predictions
+clf = ZeroShotMiniMaxClassifier(model="MiniMax-M2.7")
+clf.fit(X, y)
+clf.predict(X)
+```
+
+Available MiniMax models: `MiniMax-M2.7`, `MiniMax-M2.5`, `MiniMax-M2.5-highspeed`.
 
 For more information please refer to the **[documentation](https://skllm.beastbyte.ai)**.
 
