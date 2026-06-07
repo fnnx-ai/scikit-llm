@@ -31,7 +31,7 @@ class MiniMaxExplainableNER(_ExplainableNER, _MiniMaxTextCompletionMixin):
         sparse_output : bool, optional
             Whether to generate a sparse representation, by default True.
         model : str, optional
-            Model to use, by default "MiniMax-M2.7".
+            Model to use, by default "MiniMax-M3".
         key : Optional[str], optional
             Estimator-specific API key; if None, retrieved from the
             global config, by default None.

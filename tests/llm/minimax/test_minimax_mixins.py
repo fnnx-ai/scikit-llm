@@ -256,7 +256,7 @@ class TestMiniMaxModelConstants(unittest.TestCase):
     def test_minimax_model_constant(self):
         from skllm.model_constants import MINIMAX_MODEL
 
-        self.assertEqual(MINIMAX_MODEL, "MiniMax-M2.7")
+        self.assertEqual(MINIMAX_MODEL, "MiniMax-M3")
 
 
 class TestMiniMaxModels(unittest.TestCase):
@@ -266,7 +266,7 @@ class TestMiniMaxModels(unittest.TestCase):
         )
 
         clf = ZeroShotMiniMaxClassifier(key="test_key")
-        self.assertEqual(clf.model, "MiniMax-M2.7")
+        self.assertEqual(clf.model, "MiniMax-M3")
         self.assertEqual(clf.key, "test_key")
 
     def test_cot_classifier_init(self):
@@ -274,8 +274,8 @@ class TestMiniMaxModels(unittest.TestCase):
             CoTMiniMaxClassifier,
         )
 
-        clf = CoTMiniMaxClassifier(key="test_key", model="MiniMax-M2.5")
-        self.assertEqual(clf.model, "MiniMax-M2.5")
+        clf = CoTMiniMaxClassifier(key="test_key", model="MiniMax-M2.7")
+        self.assertEqual(clf.model, "MiniMax-M2.7")
 
     def test_multi_label_classifier_init(self):
         from skllm.models.minimax.classification.zero_shot import (
@@ -291,13 +291,13 @@ class TestMiniMaxModels(unittest.TestCase):
         )
 
         clf = FewShotMiniMaxClassifier(key="test_key")
-        self.assertEqual(clf.model, "MiniMax-M2.7")
+        self.assertEqual(clf.model, "MiniMax-M3")
 
     def test_summarizer_init(self):
         from skllm.models.minimax.text2text.summarization import MiniMaxSummarizer
 
         s = MiniMaxSummarizer(key="test_key", max_words=20)
-        self.assertEqual(s.model, "MiniMax-M2.7")
+        self.assertEqual(s.model, "MiniMax-M3")
         self.assertEqual(s.max_words, 20)
 
     def test_translator_init(self):
@@ -312,7 +312,7 @@ class TestMiniMaxModels(unittest.TestCase):
         entities = {"PERSON": "A person's name", "ORG": "An organization"}
         ner = MiniMaxExplainableNER(entities=entities, key="test_key")
         self.assertEqual(ner.entities, entities)
-        self.assertEqual(ner.model, "MiniMax-M2.7")
+        self.assertEqual(ner.model, "MiniMax-M3")
 
 
 if __name__ == "__main__":

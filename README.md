@@ -70,12 +70,12 @@ from skllm.models.minimax.classification.zero_shot import ZeroShotMiniMaxClassif
 SKLLMConfig.set_minimax_key("<YOUR_MINIMAX_API_KEY>")
 
 # Initialize the model and make predictions
-clf = ZeroShotMiniMaxClassifier(model="MiniMax-M2.7")
+clf = ZeroShotMiniMaxClassifier(model="MiniMax-M3")
 clf.fit(X, y)
 clf.predict(X)
 ```
 
-Available MiniMax models: `MiniMax-M2.7`, `MiniMax-M2.5`, `MiniMax-M2.5-highspeed`.
+Available MiniMax models: `MiniMax-M3`, `MiniMax-M2.7`, `MiniMax-M2.7-highspeed`.
 
 For more information please refer to the **[documentation](https://skllm.beastbyte.ai)**.
 

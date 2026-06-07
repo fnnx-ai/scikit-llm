@@ -18,7 +18,7 @@ class TestMiniMaxCompletionIntegration(unittest.TestCase):
         response = get_chat_completion(
             messages=[{"role": "user", "content": "Say hello in one word."}],
             key=MINIMAX_KEY,
-            model="MiniMax-M2.5-highspeed",
+            model="MiniMax-M2.7-highspeed",
             max_tokens=500,
         )
         content = response.choices[0].message.content
@@ -31,7 +31,7 @@ class TestMiniMaxCompletionIntegration(unittest.TestCase):
         response = get_chat_completion(
             messages=[{"role": "user", "content": "What are you?"}],
             key=MINIMAX_KEY,
-            model="MiniMax-M2.5-highspeed",
+            model="MiniMax-M2.7-highspeed",
             system="You are a friendly bot. Respond in one sentence.",
             max_tokens=500,
         )
@@ -52,7 +52,7 @@ class TestMiniMaxCompletionIntegration(unittest.TestCase):
                 }
             ],
             key=MINIMAX_KEY,
-            model="MiniMax-M2.5-highspeed",
+            model="MiniMax-M2.7-highspeed",
             json_response=True,
             max_tokens=1000,
         )
@@ -72,7 +72,7 @@ class TestMiniMaxMixinIntegration(unittest.TestCase):
         mixin._set_keys(MINIMAX_KEY)
 
         completion = mixin._get_chat_completion(
-            model="MiniMax-M2.5-highspeed",
+            model="MiniMax-M2.7-highspeed",
             messages="Say 'test' and nothing else.",
         )
         result = mixin._convert_completion_to_str(completion)
@@ -86,7 +86,7 @@ class TestMiniMaxMixinIntegration(unittest.TestCase):
         mixin._set_keys(MINIMAX_KEY)
 
         completion = mixin._get_chat_completion(
-            model="MiniMax-M2.5-highspeed",
+            model="MiniMax-M2.7-highspeed",
             messages='Classify "I love this!" as positive, negative, or neutral.',
             system_message="You are a text classifier. Return a JSON object with a single key 'label'.",
         )

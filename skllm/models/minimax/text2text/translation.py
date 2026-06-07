@@ -23,7 +23,7 @@ class MiniMaxTranslator(_BaseTranslator, _MiniMaxTextCompletionMixin):
         Parameters
         ----------
         model : str, optional
-            Model to use, by default "MiniMax-M2.7".
+            Model to use, by default "MiniMax-M3".
         key : Optional[str], optional
             Estimator-specific API key; if None, retrieved from
             the global config, by default None.

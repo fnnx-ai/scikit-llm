@@ -31,7 +31,7 @@ class FewShotMiniMaxClassifier(
         Parameters
         ----------
         model : str, optional
-            Model to use, by default "MiniMax-M2.7".
+            Model to use, by default "MiniMax-M3".
         default_label : str, optional
             Default label for failed predictions; if "Random", selects
             randomly based on class frequencies, by default "Random".
@@ -70,7 +70,7 @@ class MultiLabelFewShotMiniMaxClassifier(
         Parameters
         ----------
         model : str, optional
-            Model to use, by default "MiniMax-M2.7".
+            Model to use, by default "MiniMax-M3".
         default_label : str, optional
             Default label for failed predictions; if "Random", selects
             randomly based on class frequencies, by default "Random".
@@ -116,7 +116,7 @@ class DynamicFewShotMiniMaxClassifier(
         Parameters
         ----------
         model : str, optional
-            Model to use, by default "MiniMax-M2.7".
+            Model to use, by default "MiniMax-M3".
         default_label : str, optional
             Default label for failed predictions; if "Random", selects
             randomly based on class frequencies, by default "Random".
