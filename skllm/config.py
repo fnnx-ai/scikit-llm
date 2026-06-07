@@ -11,6 +11,7 @@ _ANTHROPIC_KEY_VAR = "SKLLM_CONFIG_ANTHROPIC_KEY"
 _GGUF_DOWNLOAD_PATH = "SKLLM_CONFIG_GGUF_DOWNLOAD_PATH"
 _GGUF_MAX_GPU_LAYERS = "SKLLM_CONFIG_GGUF_MAX_GPU_LAYERS"
 _GGUF_VERBOSE = "SKLLM_CONFIG_GGUF_VERBOSE"
+_MINIMAX_KEY_VAR = "SKLLM_CONFIG_MINIMAX_KEY"
 
 
 class SKLLMConfig:
@@ -191,6 +192,28 @@ class SKLLMConfig:
             Anthropic key.
         """
         return os.environ.get(_ANTHROPIC_KEY_VAR, None)
+
+    @staticmethod
+    def set_minimax_key(key: str) -> None:
+        """Sets the MiniMax API key.
+
+        Parameters
+        ----------
+        key : str
+            MiniMax API key.
+        """
+        os.environ[_MINIMAX_KEY_VAR] = key
+
+    @staticmethod
+    def get_minimax_key() -> Optional[str]:
+        """Gets the MiniMax API key.
+
+        Returns
+        -------
+        Optional[str]
+            MiniMax API key.
+        """
+        return os.environ.get(_MINIMAX_KEY_VAR, None)
 
     @staticmethod
     def reset_gpt_url():
