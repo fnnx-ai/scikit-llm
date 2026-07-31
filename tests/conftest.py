@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import pytest
 
@@ -41,3 +41,25 @@ def fake_backend(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeBackend]:
         yield backend
     finally:
         registry._BACKENDS.pop(FAKE_PROVIDER, None)
+
+
+@pytest.fixture
+def fake_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[Callable[[str], FakeBackend]]:
+    """Answer a real provider prefix with the fake adapter, for the tests that
+    exercise what scikit-llm derives from the provider name itself."""
+    monkeypatch.setenv("FAKE_API_KEY", "fake-key")
+    registered: list[str] = []
+
+    def register(prefix: str) -> FakeBackend:
+        backend = FakeBackend()
+        register_backend(prefix, backend)
+        registered.append(prefix)
+        return backend
+
+    try:
+        yield register
+    finally:
+        for prefix in registered:
+            registry._BACKENDS.pop(prefix, None)

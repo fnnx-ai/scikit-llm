@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import math
 import pickle
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -9,14 +11,17 @@ from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 from sklearn.utils import get_tags
 
+from skllm.backends import parse_model
 from skllm.classification import (
+    DynamicFewShotClassifier,
     FewShotClassifier,
     MultiLabelFewShotClassifier,
     MultiLabelZeroShotClassifier,
     ZeroShotClassifier,
 )
 from skllm.config import config_context
-from skllm.core import SampleError
+from skllm.core import DEFAULT_CHAT_MODEL, Requirement, SampleError
+from skllm.vectorization import Vectorizer
 from tests.fakes import FakeBackend, FakeCall
 
 FAKE_MODEL = "fake::m"
@@ -67,6 +72,30 @@ def test_zero_shot_derives_sorted_classes_and_predicts_a_label(
     assert len(fake_backend.calls) == 1
     assert fake_backend.calls[0].kind == "structured"
     assert list(predictions) == ["positive"]
+
+
+def test_a_bare_model_string_routes_to_the_openai_backend(
+    fake_provider: Callable[[str], FakeBackend],
+) -> None:
+    backend = fake_provider("openai")
+    backend.structured_script = label("positive")
+
+    ZeroShotClassifier(model="gpt-5", verbose=0).fit(None, SENTIMENTS).predict(
+        ["I love it"]
+    )
+
+    assert backend.calls[-1].model == "gpt-5"
+
+
+def test_a_classifier_built_without_a_model_asks_openai_for_the_default(
+    fake_provider: Callable[[str], FakeBackend],
+) -> None:
+    backend = fake_provider("openai")
+    backend.structured_script = label("positive")
+
+    ZeroShotClassifier(verbose=0).fit(None, SENTIMENTS).predict(["I love it"])
+
+    assert backend.calls[-1].model == parse_model(DEFAULT_CHAT_MODEL).model_id
 
 
 def test_the_label_schema_constrains_the_answer_to_the_classes(
@@ -187,6 +216,7 @@ def test_multi_label_prompts_state_the_cap(
     [
         ZeroShotClassifier,
         FewShotClassifier,
+        DynamicFewShotClassifier,
         MultiLabelZeroShotClassifier,
         MultiLabelFewShotClassifier,
     ],
@@ -207,6 +237,7 @@ def test_an_invalid_prompt_template_names_the_placeholders() -> None:
     message = str(excinfo.value)
     assert "missing ['labels']" in message
     assert "unknown ['tone']" in message
+    assert "must use exactly ['labels', 'text']" in message
 
 
 # --- failures ----------------------------------------------------------------
@@ -564,6 +595,240 @@ def test_invalid_max_labels_are_rejected() -> None:
         )
 
 
+# --- dynamic few-shot --------------------------------------------------------
+
+#: Where each text sits on the unit circle, so which examples are nearest is a
+#: fact of the test rather than of the fake backend's own embedding.
+ANGLES = {
+    "cheap and cheerful": 0.0,
+    "great value": 0.1,
+    "worth every cent": 0.2,
+    "a bargain": 0.3,
+    "costs too much": 0.4,
+    "arrived next day": 1.5,
+    "how much does it cost?": 0.24,  # the query, nearest to 0.2 then 0.3 then 0.1
+}
+PRICE_TEXTS = [
+    "cheap and cheerful",
+    "great value",
+    "worth every cent",
+    "a bargain",
+    "costs too much",
+]
+DELIVERY_TEXTS = ["arrived next day"]
+
+
+def embed_by_angle(call: FakeCall) -> list[list[float]]:
+    return [[math.cos(ANGLES[text]), math.sin(ANGLES[text])] for text in call.texts]
+
+
+@pytest.fixture
+def dynamic(fake_backend: FakeBackend) -> DynamicFewShotClassifier:
+    fake_backend.structured_script = label("positive")
+    return DynamicFewShotClassifier(
+        model=FAKE_MODEL, verbose=0, vectorizer=Vectorizer(model=FAKE_MODEL, verbose=0)
+    ).fit(REVIEWS, SENTIMENTS)
+
+
+def test_each_class_contributes_its_own_nearest_examples(
+    fake_backend: FakeBackend,
+) -> None:
+    """A class with fewer examples than n_examples contributes what it has."""
+    fake_backend.embedding_script = embed_by_angle
+    fake_backend.structured_script = label("price")
+    classifier = DynamicFewShotClassifier(
+        model=FAKE_MODEL,
+        verbose=0,
+        n_examples=3,
+        vectorizer=Vectorizer(model=FAKE_MODEL, verbose=0),
+    ).fit(PRICE_TEXTS + DELIVERY_TEXTS, ["price"] * 5 + ["delivery"])
+
+    classifier.predict(["how much does it cost?"])
+
+    prompt = fake_backend.prompts[-1]
+    assert prompt.count("Categories: price") == 3
+    assert prompt.count("Categories: delivery") == 1
+    assert "worth every cent" in prompt  # the three nearest of the large class
+    assert "a bargain" in prompt
+    assert "great value" in prompt
+    assert "cheap and cheerful" not in prompt
+    assert "costs too much" not in prompt
+    assert "arrived next day" in prompt  # the only example the small class has
+
+
+def test_the_query_batch_is_embedded_once(
+    dynamic: DynamicFewShotClassifier, fake_backend: FakeBackend
+) -> None:
+    fake_backend.calls.clear()
+
+    dynamic.predict(["one", "two", "three"])
+
+    kinds = [call.kind for call in fake_backend.calls]
+    assert kinds.count("embed") == 1
+    assert kinds.count("structured") == 3
+    assert fake_backend.calls[0].texts == ("one", "two", "three")
+
+
+def test_an_empty_batch_embeds_nothing(
+    dynamic: DynamicFewShotClassifier, fake_backend: FakeBackend
+) -> None:
+    fake_backend.calls.clear()
+
+    assert list(dynamic.predict([])) == []
+    assert fake_backend.calls == []
+
+
+def test_the_supplied_vectorizer_is_cloned_into_the_fitted_state(
+    fake_backend: FakeBackend,
+) -> None:
+    vectorizer = Vectorizer(model=FAKE_MODEL, verbose=0)
+    classifier = DynamicFewShotClassifier(
+        model=FAKE_MODEL, verbose=0, vectorizer=vectorizer
+    ).fit(REVIEWS, SENTIMENTS)
+
+    assert classifier.vectorizer is vectorizer
+    assert classifier.vectorizer_ is not vectorizer
+    assert classifier.vectorizer_.get_params() == vectorizer.get_params()
+
+
+@pytest.mark.parametrize(
+    ("provider", "embedding_model"),
+    [
+        ("openai", "openai::text-embedding-3-small"),
+        ("google", "google::gemini-embedding-001"),
+    ],
+)
+def test_providers_with_a_default_embedding_model_need_no_vectorizer(
+    provider: str,
+    embedding_model: str,
+    fake_provider: Callable[[str], FakeBackend],
+) -> None:
+    backend = fake_provider(provider)
+    classifier = DynamicFewShotClassifier(model=f"{provider}::a-chat-model", verbose=0)
+
+    classifier.fit(REVIEWS, SENTIMENTS)
+
+    assert classifier.vectorizer_.model == embedding_model
+    assert backend.calls[0].model == embedding_model.split("::")[1]
+    # The fit-created vectorizer needs the same credential the classifier does.
+    assert classifier.llm_requirements() == (Requirement(provider, None),)
+
+
+def test_the_default_vectorizer_inherits_the_connection_config(
+    fake_provider: Callable[[str], FakeBackend],
+) -> None:
+    backend = fake_provider("openai")
+
+    DynamicFewShotClassifier(
+        model="openai::a-chat-model",
+        verbose=0,
+        api_key="sk-param",
+        base_url="http://proxy/v1",
+    ).fit(REVIEWS, SENTIMENTS)
+
+    assert backend.calls[0].api_key == "sk-param"
+    assert backend.calls[0].base_url == "http://proxy/v1"
+
+
+def test_the_inherited_connection_config_is_not_pickled(
+    fake_provider: Callable[[str], FakeBackend],
+) -> None:
+    """The fit-created vectorizer holds the key in memory, never in the payload."""
+    fake_provider("openai")
+    classifier = DynamicFewShotClassifier(
+        model="openai::a-chat-model", verbose=0, api_key="sk-secret"
+    ).fit(REVIEWS, SENTIMENTS)
+
+    assert classifier.vectorizer_.api_key == "sk-secret"
+    payload = pickle.dumps(classifier)
+
+    assert b"sk-secret" not in payload
+    assert pickle.loads(payload).vectorizer_.api_key is None
+
+
+def test_the_default_vectorizer_shares_the_alias(
+    fake_provider: Callable[[str], FakeBackend],
+) -> None:
+    backend = fake_provider("openai")
+    classifier = DynamicFewShotClassifier(
+        model="openai::a-chat-model", verbose=0, alias="team_a"
+    )
+
+    with config_context(credentials={"team_a": "sk-a"}):
+        classifier.fit(REVIEWS, SENTIMENTS)
+
+    assert backend.calls[0].api_key == "sk-a"
+    assert classifier.llm_requirements() == (Requirement("openai", "team_a"),)
+
+
+def test_an_override_aimed_at_the_classifier_spares_the_embedding_call(
+    fake_provider: Callable[[str], FakeBackend],
+) -> None:
+    """The shared alias routes the credential, not the generation params."""
+    backend = fake_provider("openai")
+    backend.structured_script = label("positive")
+    classifier = DynamicFewShotClassifier(
+        model="openai::a-chat-model", verbose=0, alias="careful"
+    )
+
+    with config_context(credentials={"careful": "sk-a"}):
+        classifier.fit(REVIEWS, SENTIMENTS)
+        with config_context(overrides={"careful": {"temperature": 0.9}}):
+            classifier.predict(["I love it"])
+
+    embedding, chat = backend.calls[-2], backend.calls[-1]
+    assert (embedding.kind, chat.kind) == ("embed", "structured")
+    assert "temperature" not in embedding.params
+    assert chat.params["temperature"] == 0.9
+
+
+def test_a_provider_without_a_default_embedding_model_demands_a_vectorizer() -> None:
+    classifier = DynamicFewShotClassifier(model="anthropic::claude-sonnet-5")
+
+    with pytest.raises(ValueError) as excinfo:
+        classifier.fit(REVIEWS, SENTIMENTS)
+
+    message = str(excinfo.value)
+    assert "anthropic" in message
+    assert "no embeddings" in message
+    assert "vectorizer=Vectorizer(model=" in message
+
+
+@pytest.mark.parametrize("value", [0, None, 1.5])
+def test_invalid_n_examples_are_rejected(value: Any) -> None:
+    with pytest.raises(ValueError, match="n_examples"):
+        DynamicFewShotClassifier(model=FAKE_MODEL, n_examples=value).fit(
+            REVIEWS, SENTIMENTS
+        )
+
+
+def test_a_foreign_vectorizer_is_rejected() -> None:
+    with pytest.raises(TypeError, match="skllm Vectorizer"):
+        DynamicFewShotClassifier(model=FAKE_MODEL, vectorizer=ZeroShotClassifier()).fit(
+            REVIEWS, SENTIMENTS
+        )
+
+
+def test_dynamic_predictions_come_from_the_fitted_classes(
+    dynamic: DynamicFewShotClassifier, fake_backend: FakeBackend
+) -> None:
+    assert dynamic.classes_ == ["negative", "positive"]
+    assert list(dynamic.predict(["I love it"])) == ["positive"]
+
+
+def test_the_retrieval_indexes_survive_a_pickle_round_trip(
+    dynamic: DynamicFewShotClassifier, fake_backend: FakeBackend
+) -> None:
+    restored = pickle.loads(pickle.dumps(dynamic))
+
+    assert list(dynamic.predict(["I love it"])) == ["positive"]
+    assert list(restored.predict(["I love it"])) == ["positive"]
+
+    prompts = [call.prompt for call in fake_backend.calls if call.kind == "structured"]
+    assert prompts[-1] == prompts[-2]  # the same examples were retrieved
+    assert "It broke on day one" in prompts[-1]
+
+
 # --- sklearn compliance ------------------------------------------------------
 
 
@@ -572,6 +837,7 @@ def test_invalid_max_labels_are_rejected() -> None:
     [
         ZeroShotClassifier,
         FewShotClassifier,
+        DynamicFewShotClassifier,
         MultiLabelZeroShotClassifier,
         MultiLabelFewShotClassifier,
     ],
@@ -593,6 +859,7 @@ def test_params_survive_a_clone(classifier: type[Any]) -> None:
     [
         ZeroShotClassifier,
         FewShotClassifier,
+        DynamicFewShotClassifier,
         MultiLabelZeroShotClassifier,
         MultiLabelFewShotClassifier,
     ],

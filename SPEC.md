@@ -504,10 +504,10 @@ FNNX validates inputs against these schemas at compute time; the FNNX local hand
   - [x] `ZeroShotClassifier`, `FewShotClassifier`, `MultiLabelZeroShotClassifier`, `MultiLabelFewShotClassifier` in `skllm/classification.py` with structured-output label constraints, string-label validation, `default_label`/`max_labels` (schema constraint plus truncation backstop), prompt templates in `skllm/prompts/`, `prompt_template` override validation
   - [x] `n_predictors` sampled voting: majority-vote `predict`, vote-fraction `predict_proba`, one-hot proba when unset, determinism-default suppression for vote calls, temperature-0 conflict error, per-vote failure tolerance (single- and multi-label semantics)
   - [x] Tests: happy paths, label-out-of-set failure, non-string y rejection, multi-label shapes, proba fractions and one-hot degeneracy, temperature-conflict error, prompt content
-- [ ] Add vectorizer and dynamic few-shot classifier
-  - [ ] `Vectorizer` in `skllm/vectorization.py` (batching, 2-D float output, all-or-nothing error behavior)
-  - [ ] `DynamicFewShotClassifier` with per-class sklearn `NearestNeighbors` retrieval, small-class handling, default vectorizer models (`openai::text-embedding-3-small`, `google::gemini-embedding-001`), explicit-vectorizer requirement for all other providers
-  - [ ] Tests: embedding batching, retrieval composition, default-vectorizer selection, anthropic-without-vectorizer error
+- [x] Add vectorizer and dynamic few-shot classifier
+  - [x] `Vectorizer` in `skllm/vectorization.py` (batching, 2-D float output, all-or-nothing error behavior)
+  - [x] `DynamicFewShotClassifier` with per-class sklearn `NearestNeighbors` retrieval, small-class handling, default vectorizer models (`openai::text-embedding-3-small`, `google::gemini-embedding-001`), explicit-vectorizer requirement for all other providers
+  - [x] Tests: embedding batching, retrieval composition, default-vectorizer selection, anthropic-without-vectorizer error
 - [ ] Add summarizer and translator
   - [ ] `Summarizer` (`max_words`, `focus`) and `Translator` (`output_language`) in `skllm/text2text.py` as stateless transformers without `predict` alias
   - [ ] Tests: outputs, fill-on-failure with empty string, param handling

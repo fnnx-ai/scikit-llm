@@ -10,14 +10,16 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from functools import partial
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
 import numpy as np
-from sklearn.base import ClassifierMixin
+from sklearn.base import ClassifierMixin, clone
+from sklearn.neighbors import NearestNeighbors
 
-from skllm.backends import BackendError, Message
+from skllm.backends import BackendError, Message, parse_model
 from skllm.core import (
     DEFAULT_CHAT_MODEL,
+    DEFAULT_EMBEDDING_MODEL,
     DEFAULT_MAX_CONCURRENCY,
     BasePromptEstimator,
     as_texts,
@@ -30,11 +32,13 @@ from skllm.prompts import (
     render_examples,
     render_labels,
 )
+from skllm.vectorization import DEFAULT_EMBEDDING_MODELS, Vectorizer
 
 if TYPE_CHECKING:
     from typing import Self
 
 __all__ = [
+    "DynamicFewShotClassifier",
     "FewShotClassifier",
     "MultiLabelFewShotClassifier",
     "MultiLabelZeroShotClassifier",
@@ -120,16 +124,24 @@ class _BaseClassifier(ClassifierMixin, BasePromptEstimator):
         self._check_ready()
         repeats = self._repeats()
         return self._run_repeated(
-            as_texts(X),
+            self._prompts(as_texts(X)),
             partial(self._vote, deterministic=repeats == 1),
             repeats=repeats,
         )
 
-    def _vote(self, text: str, *, deterministic: bool) -> tuple[str, ...]:
+    def _prompts(self, texts: Sequence[str]) -> list[str]:
+        """Render one prompt per sample, before the batch goes out.
+
+        Rendering up front rather than inside each worker lets a task gather
+        what its prompts need — the dynamic classifier's retrieval — for the
+        whole batch at once, and renders it once per sample rather than once
+        per vote.
+        """
+        return [self._prompt(**self._prompt_values(text)) for text in texts]
+
+    def _vote(self, prompt: str, *, deterministic: bool) -> tuple[str, ...]:
         answer = self._structured(
-            [Message("user", self._prompt(**self._prompt_values(text)))],
-            self._schema(),
-            deterministic=deterministic,
+            [Message("user", prompt)], self._schema(), deterministic=deterministic
         )
         return self._parse(answer)
 
@@ -326,25 +338,22 @@ class _MultiLabelClassifier(_BaseClassifier):
 
 
 class _FewShotMixin(_BaseClassifier):
-    """Carries the fitted examples into every prompt as demonstrations."""
+    """Carries fitted examples into every prompt as demonstrations."""
 
     def _fit_examples(self, X: Any, rows: Sequence[Any]) -> None:
-        texts = as_texts(X)
-        if len(texts) != len(rows):
-            raise ValueError(
-                f"X has {len(texts)} samples but y has {len(rows)}: few-shot "
-                "classifiers learn from labeled examples, so both must match."
+        self.examples_ = _paired(X, rows)
+
+    def _prompts(self, texts: Sequence[str]) -> list[str]:
+        return [
+            self._prompt(
+                **self._prompt_values(text), examples=render_examples(examples)
             )
-        self.examples_ = tuple(zip(texts, rows, strict=True))
+            for text, examples in zip(texts, self._demonstrations(texts), strict=True)
+        ]
 
-    def _prompt_values(self, text: str) -> dict[str, Any]:
-        return {
-            **super()._prompt_values(text),
-            "examples": render_examples(self._examples_for(text)),
-        }
-
-    def _examples_for(self, text: str) -> Sequence[tuple[str, Any]]:
-        return self.examples_
+    def _demonstrations(self, texts: Sequence[str]) -> list[Sequence[tuple[str, Any]]]:
+        """Which examples to demonstrate the task with, per sample."""
+        return [self.examples_] * len(texts)
 
 
 class ZeroShotClassifier(_SingleLabelClassifier):
@@ -363,6 +372,114 @@ class FewShotClassifier(_FewShotMixin, _SingleLabelClassifier):
     default_prompt_template: ClassVar[str] = FEW_SHOT_SINGLE_LABEL
 
 
+class DynamicFewShotClassifier(_FewShotMixin, _SingleLabelClassifier):
+    """Assign one label per text, demonstrating with the examples nearest to it.
+
+    Every class contributes up to ``n_examples`` of its own training texts —
+    those closest to the sample in embedding space — so the prompt stays small
+    and balanced however large the training set is.
+    """
+
+    prompt_placeholders: ClassVar[frozenset[str]] = frozenset(
+        {"labels", "text", "examples"}
+    )
+    default_prompt_template: ClassVar[str] = FEW_SHOT_SINGLE_LABEL
+
+    def __init__(
+        self,
+        model: str = DEFAULT_CHAT_MODEL,
+        *,
+        n_examples: int = 3,
+        vectorizer: Vectorizer | None = None,
+        default_label: str | None = None,
+        n_predictors: int | None = None,
+        prompt_template: str | None = None,
+        model_params: Mapping[str, Any] | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        alias: str | None = None,
+        on_error: str = "fill",
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+        verbose: int = 1,
+    ) -> None:
+        super().__init__(
+            model=model,
+            default_label=default_label,
+            n_predictors=n_predictors,
+            prompt_template=prompt_template,
+            model_params=model_params,
+            api_key=api_key,
+            base_url=base_url,
+            alias=alias,
+            on_error=on_error,
+            max_concurrency=max_concurrency,
+            verbose=verbose,
+        )
+        self.n_examples = n_examples
+        self.vectorizer = vectorizer
+
+    def _check_params(self) -> None:
+        super()._check_params()
+        _check_count("n_examples", self.n_examples, required=True)
+        if self.vectorizer is not None and not isinstance(self.vectorizer, Vectorizer):
+            raise TypeError(
+                "vectorizer must be a skllm Vectorizer or None, got "
+                f"{type(self.vectorizer).__name__}."
+            )
+
+    def _fit_examples(self, X: Any, rows: Sequence[Any]) -> None:
+        examples = _paired(X, rows)
+        vectorizer = (
+            self._default_vectorizer()
+            if self.vectorizer is None
+            else clone(self.vectorizer)
+        )
+        vectors = vectorizer.transform([text for text, _ in examples])
+        self.vectorizer_ = vectorizer
+        self.indexes_ = _class_indexes(examples, vectors)
+
+    def _demonstrations(self, texts: Sequence[str]) -> list[Sequence[tuple[str, Any]]]:
+        """Embed the whole batch once, then retrieve per class for each sample."""
+        return [self._nearest(query) for query in self.vectorizer_.transform(texts)]
+
+    def _nearest(self, query: np.ndarray) -> list[tuple[str, str]]:
+        examples: list[tuple[str, str]] = []
+        for label, index in self.indexes_.items():
+            count = min(self.n_examples, len(index.texts))
+            positions = index.neighbors.kneighbors(
+                [query], n_neighbors=count, return_distance=False
+            )
+            examples.extend((index.texts[position], label) for position in positions[0])
+        return examples
+
+    def _default_vectorizer(self) -> Vectorizer:
+        """The chat provider's own embedding model, where it has a default one.
+
+        Connection config carries over: the fit-created vectorizer talks to the
+        same provider as the classifier, so it must authenticate as it does —
+        which also keeps a bundle's declared credentials down to one per key.
+        """
+        provider = parse_model(self.model).provider
+        model = DEFAULT_EMBEDDING_MODELS.get(provider)
+        if model is None:
+            raise ValueError(
+                f"{type(self).__name__} retrieves its examples by embedding them, "
+                f"and there is no default embedding model for the {provider!r} "
+                "provider (anthropic offers no embeddings; for ollama, litellm and "
+                "custom backends the model id depends on the deployment). Pass one "
+                "explicitly, e.g. vectorizer=Vectorizer(model="
+                f"{DEFAULT_EMBEDDING_MODEL!r})."
+            )
+        return Vectorizer(
+            model=model,
+            api_key=self.api_key,
+            base_url=self.base_url,
+            alias=self.alias,
+            max_concurrency=self.max_concurrency,
+            verbose=self.verbose,
+        )
+
+
 class MultiLabelZeroShotClassifier(_MultiLabelClassifier):
     """Assign every applicable label to each text, without examples."""
 
@@ -379,6 +496,41 @@ class MultiLabelFewShotClassifier(_FewShotMixin, _MultiLabelClassifier):
         {"labels", "text", "max_labels", "examples"}
     )
     default_prompt_template: ClassVar[str] = FEW_SHOT_MULTI_LABEL
+
+
+class _ClassIndex(NamedTuple):
+    """One class's demonstration texts and a neighbor index over their vectors."""
+
+    texts: tuple[str, ...]
+    neighbors: NearestNeighbors
+
+
+def _class_indexes(
+    examples: Sequence[tuple[str, Any]], vectors: np.ndarray
+) -> dict[str, _ClassIndex]:
+    """Index each class separately, so every class contributes its own examples."""
+    positions: dict[str, list[int]] = {}
+    for position, (_, label) in enumerate(examples):
+        positions.setdefault(label, []).append(position)
+    return {
+        label: _ClassIndex(
+            texts=tuple(examples[position][0] for position in rows),
+            # Cosine ranks embeddings by direction, which is what their
+            # similarity means; magnitude varies with text length.
+            neighbors=NearestNeighbors(metric="cosine").fit(vectors[rows]),
+        )
+        for label, rows in sorted(positions.items())
+    }
+
+
+def _paired(X: Any, rows: Sequence[Any]) -> tuple[tuple[str, Any], ...]:
+    texts = as_texts(X)
+    if len(texts) != len(rows):
+        raise ValueError(
+            f"X has {len(texts)} samples but y has {len(rows)}: few-shot "
+            "classifiers learn from labeled examples, so both must match."
+        )
+    return tuple(zip(texts, rows, strict=True))
 
 
 def _object_schema(name: str, value: Mapping[str, Any]) -> dict[str, Any]:
@@ -414,11 +566,12 @@ def _distinct(rows: Sequence[Any]) -> list[str]:
     return sorted(labels)
 
 
-def _check_count(name: str, value: Any) -> None:
-    if value is None:
+def _check_count(name: str, value: Any, *, required: bool = False) -> None:
+    if value is None and not required:
         return
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        raise ValueError(f"{name} must be a positive integer or None, got {value!r}.")
+        suffix = "" if required else " or None"
+        raise ValueError(f"{name} must be a positive integer{suffix}, got {value!r}.")
 
 
 def _quote(answer: Any) -> str:

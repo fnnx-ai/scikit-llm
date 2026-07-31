@@ -87,6 +87,12 @@ class BaseLLMEstimator(BaseEstimator):
     :meth:`_run_batch` call.
     """
 
+    #: Whether one failed sample aborts the batch whatever ``on_error`` says.
+    #: Set where the answers are not per-sample predictions but material other
+    #: models consume — embeddings, cluster names — so that a filled sample
+    #: would silently poison everything downstream instead of showing up.
+    _all_or_nothing: ClassVar[bool] = False
+
     def __init__(
         self,
         model: str = DEFAULT_CHAT_MODEL,
@@ -280,7 +286,7 @@ class BaseLLMEstimator(BaseEstimator):
         attempts = [item for item in items for _ in range(repeats)]
         answers: list[list[_R]] = []
         errors: list[SampleError] = []
-        raising = self.on_error == "raise"
+        raising = self._all_or_nothing or self.on_error == "raise"
         with collect_usage() as usage:
             try:
                 outcomes = map_concurrently(
