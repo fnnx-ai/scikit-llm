@@ -484,11 +484,11 @@ FNNX validates inputs against these schemas at compute time; the FNNX local hand
 - [x] Add layered config and credential resolution
   - [x] Implement `skllm/config.py`: contextvars store, `config_context` manager, per-provider keys/base URLs, named credentials map for aliases (with `SKLLM_CREDENTIAL_<ALIAS>` env fallback), alias-targeted `overrides` map, `allow_env_fallback` switch (context option + `SKLLM_ALLOW_ENV_FALLBACK`), per-provider client-options map, retry/timeout settings, pricing map, env-var fallback with standard provider names
   - [x] Tests: layering order, alias strictness (set-but-unresolved errors), override precedence (beats stored `model_params`), disabled-env-fallback errors, nesting, thread and asyncio isolation
-- [ ] Add backend layer with model-string dispatch
-  - [ ] Backend protocol (chat / structured / embeddings, each returning content + usage) and registry with public `register_backend`; model-string parser with bare-string→openai default and unknown-prefix error
-  - [ ] OpenAI adapter (chat, JSON-schema structured outputs, embeddings) and the Ollama profile over it (default base URL, keyless); advisory-default injection (temperature 0, `reasoning_effort: "none"` where accepted) with unsupported-param strip-and-retry-once, per-model caching, seed list for known reasoning families, user params never touched; retry with backoff
-  - [ ] Fake in-memory test backend registered via the registry, used as the standard test double
-  - [ ] Tests: parser, registry, adapter behavior against a mocked OpenAI SDK, retry/backoff, usage capture
+- [x] Add backend layer with model-string dispatch
+  - [x] Backend protocol (chat / structured / embeddings, each returning content + usage) and registry with public `register_backend`; model-string parser with bare-string→openai default and unknown-prefix error
+  - [x] OpenAI adapter (chat, JSON-schema structured outputs, embeddings) and the Ollama profile over it (default base URL, keyless); advisory-default injection (temperature 0, `reasoning_effort: "none"` where accepted) with unsupported-param strip-and-retry-once, per-model caching, seed list for known reasoning families, user params never touched; retry with backoff
+  - [x] Fake in-memory test backend registered via the registry, used as the standard test double
+  - [x] Tests: parser, registry, adapter behavior against a mocked OpenAI SDK, retry/backoff, usage capture
 - [ ] Add anthropic, google, and litellm backends
   - [ ] Anthropic adapter (tool-use structured outputs, no embeddings), Google adapter via `google-genai` (chat, response-schema, embeddings), LiteLLM passthrough adapter
   - [ ] Lazy imports with `pip install scikit-llm[<extra>]` error messages
