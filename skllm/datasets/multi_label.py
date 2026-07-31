@@ -1,4 +1,4 @@
-def get_multilabel_classification_dataset():
+def get_multilabel_classification_dataset() -> tuple[list[str], list[list[str]]]:
     X = [
     "The product was of excellent quality, and the packaging was also very good. Highly recommend!",
     "The delivery was super fast, but the product did not match the information provided on the website.",

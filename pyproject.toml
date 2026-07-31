@@ -3,15 +3,15 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-dependencies = [
-  "scikit-learn>=1.1.0,<2.0.0",
-  "pandas>=1.5.0,<3.0.0",
-  "openai>=1.2.0,<2.0.0",
-  "tqdm>=4.60.0,<5.0.0",
-  "google-cloud-aiplatform[pipelines]>=1.27.0,<2.0.0"
-]
 name = "scikit-llm"
-version = "1.4.2"
+dynamic = ["version"]
+dependencies = [
+  "scikit-learn>=1.6",
+  "numpy>=1.24",
+  "openai>=1.50",
+  "fnnx[extras]>=0.0.12",
+  "tqdm>=4.60",
+]
 authors = [
   { name="Oleh Kostromin", email="kostromin97@gmail.com" },
   { name="Iryna Kondrashchenko", email="iryna230520@gmail.com" },
@@ -19,7 +19,7 @@ authors = [
 description = "Scikit-LLM: Seamlessly integrate powerful language models like ChatGPT into scikit-learn for enhanced text analysis tasks."
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -27,66 +27,66 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-gguf = ["llama-cpp-python>=0.2.82,<0.2.83"]
-annoy = ["annoy>=1.17.2,<2.0.0"]
+anthropic = ["anthropic>=0.40"]
+google = ["google-genai>=1.0"]
+litellm = ["litellm>=1.60"]
+all = ["scikit-llm[anthropic,google,litellm]"]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11"]
+
+[tool.setuptools.dynamic]
+version = { attr = "skllm.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["skllm*"]
 
 [tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
 select = [
     # pycodestyle
     "E",
+    "W",
     # pyflakes
     "F",
-    # pydocstyle
-    "D",
+    # isort
+    "I",
+    # flake8-bugbear
+    "B",
     # flake8-bandit
     "S",
+    # flake8-simplify
+    "SIM",
     # pyupgrade
     "UP",
     # pep8-naming
     "N",
+    # ruff-specific
+    "RUF",
 ]
-# Error E501 (Line too long) is ignored because of docstrings.
-ignore = [
-    "S101",
-    "S301",
-    "S311",
-    "D100",
-    "D200",
-    "D203",
-    "D205",
-    "D401",
-    "E501",
-    "N803",
-    "N806",
-    "D104",
-]
-extend-exclude = ["tests/*.py", "setup.py"]
-target-version = "py39"
-force-exclude = true
+# E501 is left to the formatter; N803/N806 clash with sklearn's `X`/`y` convention.
+ignore = ["E501", "N803", "N806"]
 
-[tool.ruff.per-file-ignores]
-"__init__.py" = ["E402", "F401", "F403", "F811"]
-
-[tool.ruff.pydocstyle]
-convention = "numpy"
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["S101"]
 
 [tool.mypy]
+files = ["skllm", "tests"]
+# Not the 3.10 floor: numpy's bundled stubs use PEP 695 `type` statements, which
+# mypy refuses to parse below 3.12. Ruff's py310 target guards the actual floor.
+python_version = "3.12"
 ignore_missing_imports = true
-
-[tool.black]
-preview = true
-target-version = ['py39', 'py310', 'py311']
-
-[tool.isort]
-profile = "black"
-filter_files = true
-known_first_party = ["skllm", "skllm.*"]
-skip = ["__init__.py"]
-
-[tool.docformatter]
-close-quotes-on-newline = true # D209
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
 
 [tool.pytest.ini_options]
-pythonpath = [
-  "."
-]
+testpaths = ["tests"]
+pythonpath = ["."]

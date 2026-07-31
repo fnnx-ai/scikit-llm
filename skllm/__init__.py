@@ -1,2 +1,2 @@
-__version__ = '1.4.2'
-__author__ = 'Iryna Kondrashchenko, Oleh Kostromin'
+__version__ = "2.0.0"
+__author__ = "Iryna Kondrashchenko, Oleh Kostromin"

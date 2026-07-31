@@ -1,4 +1,4 @@
-def get_classification_dataset():
+def get_classification_dataset() -> tuple[list[str], list[str]]:
     X = [
         r"I was absolutely blown away by the performances in 'Summer's End'. The acting was top-notch, and the plot had me gripped from start to finish. A truly captivating cinematic experience that I would highly recommend.",
         r"The special effects in 'Star Battles: Nebula Conflict' were out of this world. I felt like I was actually in space. The storyline was incredibly engaging and left me wanting more. Excellent film.",

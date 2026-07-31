@@ -1,0 +1,1 @@
+"""Schema-driven structured extraction."""

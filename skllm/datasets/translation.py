@@ -1,4 +1,4 @@
-def get_translation_dataset():
+def get_translation_dataset() -> list[str]:
     X = [
         r"Me encanta bailar salsa y bachata. Es una forma divertida de expresarme.",
         r"J'ai passé mes dernières vacances en Grèce. Les plages étaient magnifiques.",

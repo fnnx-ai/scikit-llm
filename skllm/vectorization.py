@@ -1,1 +1,1 @@
-from skllm.models.gpt.vectorization import GPTVectorizer
+"""Embedding transformer."""

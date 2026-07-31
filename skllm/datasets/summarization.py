@@ -1,4 +1,4 @@
-def get_summarization_dataset():
+def get_summarization_dataset() -> list[str]:
     X = [
     r"The AI research company, OpenAI, has launched a new language model called GPT-4. This model is the latest in a series of transformer-based AI systems designed to perform complex tasks, such as generating human-like text, translating languages, and answering questions. According to OpenAI, GPT-4 is even more powerful and versatile than its predecessors.",
     r"John went to the grocery store in the morning to prepare for a small get-together at his house. He bought fresh apples, juicy oranges, and a bottle of milk. Once back home, he used the apples and oranges to make a delicious fruit salad, which he served to his guests in the evening.",
