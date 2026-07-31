@@ -11,9 +11,10 @@ import json
 import threading
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import partial
+from operator import itemgetter
 from types import MappingProxyType
 from typing import (
     Any,
@@ -37,12 +38,16 @@ __all__ = [
     "Backend",
     "BackendError",
     "BaseBackend",
+    "ClientCache",
     "Connection",
     "Message",
     "ResolvedConnection",
     "Response",
     "Usage",
+    "missing_extra",
+    "named_unsupported_param",
     "parse_json",
+    "request_args",
 ]
 
 INITIAL_BACKOFF = 0.5
@@ -283,8 +288,22 @@ class BaseBackend(ABC):
         """The request param a provider error rejects, if it names one."""
         return None
 
+    def _is_transient(self, exc: BaseException) -> bool:
+        """Whether a failure is worth retrying — rate limits, timeouts, 5xx."""
+        return isinstance(exc, self.transient_errors)
+
     def _retry_after(self, exc: BaseException) -> float | None:
-        """Seconds the provider asks the caller to wait, if it says so."""
+        """Seconds the provider asks the caller to wait, per its Retry-After header."""
+        headers = getattr(getattr(exc, "response", None), "headers", None)
+        if not headers:
+            return None
+        for header, scale in (("retry-after-ms", 0.001), ("retry-after", 1.0)):
+            raw = headers.get(header)
+            if raw:
+                try:
+                    return float(raw) * scale
+                except ValueError:  # the HTTP-date form; fall back to backoff
+                    continue
         return None
 
     def _invoke(
@@ -348,18 +367,99 @@ class BaseBackend(ABC):
         }
 
     def _with_retry(self, call: Callable[[], _T], settings: ResolvedConnection) -> _T:
-        transient = self.transient_errors
         attempt = 0
         while True:
             try:
                 return call()
-            except transient as exc:
-                if attempt >= settings.max_retries:
+            except Exception as exc:
+                if attempt >= settings.max_retries or not self._is_transient(exc):
                     raise
                 hint = self._retry_after(exc)
                 delay = INITIAL_BACKOFF * 2**attempt if hint is None else hint
                 time.sleep(min(MAX_BACKOFF, max(0.0, delay)))
                 attempt += 1
+
+
+class ClientCache(Generic[_T]):
+    """One provider client per distinct connection, keeping HTTP pools warm.
+
+    Adapters stay stateless — the cache is keyed by the resolved connection, so a
+    call never sees a client built for someone else's credentials.
+    """
+
+    def __init__(self, max_size: int = 32) -> None:
+        self._clients: dict[tuple[Any, ...], _T] = {}
+        self._lock = threading.Lock()
+        self._max_size = max_size
+        _CLIENT_CACHES.append(self)
+
+    def get(
+        self, provider: str, settings: ResolvedConnection, build: Callable[[], _T]
+    ) -> _T:
+        key = (
+            provider,
+            settings.api_key,
+            settings.base_url,
+            settings.timeout,
+            repr(sorted(settings.client_options.items(), key=itemgetter(0))),
+        )
+        with self._lock:
+            client = self._clients.get(key)
+            if client is None:
+                if len(self._clients) >= self._max_size:
+                    self._clients.clear()
+                client = self._clients[key] = build()
+            return client
+
+    def clear(self) -> None:
+        with self._lock:
+            self._clients.clear()
+
+
+#: Every cache ever built, so a process can drop all pooled connections at once.
+_CLIENT_CACHES: list[ClientCache[Any]] = []
+
+
+def missing_extra(extra: str, package: str) -> ImportError:
+    return ImportError(
+        f"The {extra} backend needs the {package} package, which is not installed. "
+        f"Install it with: pip install scikit-llm[{extra}]"
+    )
+
+
+#: Words a provider uses when it blames one request parameter. The parameter name
+#: alone is not enough — quota and validation errors mention it too.
+_UNSUPPORTED_HINTS = (
+    "support",
+    "unrecognized",
+    "unknown parameter",
+    "only be set",
+    "not allowed",
+)
+
+
+def named_unsupported_param(message: str, names: Iterable[str]) -> str | None:
+    """The request param a provider's error message rejects, if it names one."""
+    lowered = message.lower()
+    if not any(hint in lowered for hint in _UNSUPPORTED_HINTS):
+        return None
+    return next((name for name in names if name in lowered), None)
+
+
+def request_args(params: Mapping[str, Any], accepted: frozenset[str]) -> dict[str, Any]:
+    """Route params an SDK does not name through its ``extra_body`` passthrough.
+
+    OpenAI- and Anthropic-style SDKs take fixed keyword arguments, so a request
+    param they do not name (Ollama's num_ctx, a proxy's own knobs, a typo) would
+    die as a local TypeError. ``extra_body`` is merged into the request body
+    verbatim, so every model_param reaches the provider and an unsupported one
+    surfaces the provider's own error, never ours.
+    """
+    args = {name: value for name, value in params.items() if name in accepted}
+    unnamed = {name: value for name, value in params.items() if name not in accepted}
+    if unnamed:
+        args["extra_body"] = {**args.get("extra_body", {}), **unnamed}
+    return args
 
 
 def parse_json(text: str) -> Any:

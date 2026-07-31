@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import re
-import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from inspect import signature
-from operator import attrgetter, itemgetter
+from operator import attrgetter
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 from urllib.parse import urlsplit
 
 from openai import (
     APIConnectionError,
+    APIStatusError,
     APITimeoutError,
     InternalServerError,
     OpenAI,
@@ -25,12 +25,15 @@ from openai.resources.embeddings import Embeddings
 from skllm.backends.base import (
     BackendError,
     BaseBackend,
+    ClientCache,
     Connection,
     Message,
     ResolvedConnection,
     Response,
     Usage,
+    named_unsupported_param,
     parse_json,
+    request_args,
 )
 
 if TYPE_CHECKING:
@@ -43,11 +46,6 @@ KEYLESS_API_KEY = "skllm"
 OLLAMA_PORT = 11434
 OLLAMA_BASE_URL = f"http://localhost:{OLLAMA_PORT}/v1"
 
-# The SDK's create() methods take fixed keyword arguments, so a request param
-# they do not name (Ollama's num_ctx, a proxy's own knobs, a typo) would die as a
-# local TypeError. Anything unnamed travels in `extra_body`, which the SDK merges
-# into the request body verbatim — so every model_param reaches the provider and
-# an unsupported one surfaces the provider's own error, never ours.
 _CHAT_ARGS = frozenset(signature(Completions.create).parameters)
 _EMBEDDING_ARGS = frozenset(signature(Embeddings.create).parameters)
 
@@ -56,9 +54,7 @@ _EMBEDDING_ARGS = frozenset(signature(Embeddings.create).parameters)
 # round-trip; every other model is discovered from the provider's own error.
 _SEEDED_REASONING_FAMILY = re.compile(r"^o[134](-|$)")
 
-_MAX_CACHED_CLIENTS = 32
-_CLIENTS: dict[tuple[Any, ...], OpenAI] = {}
-_CLIENTS_LOCK = threading.Lock()
+_CLIENTS: ClientCache[OpenAI] = ClientCache()
 
 
 class OpenAIBackend(BaseBackend):
@@ -89,7 +85,7 @@ class OpenAIBackend(BaseBackend):
         completion = self._client(settings).chat.completions.create(
             model=model,
             messages=_as_messages(messages),
-            **_request_args(params, _CHAT_ARGS),
+            **request_args(params, _CHAT_ARGS),
         )
         return Response(content=_content(completion), usage=_usage(completion))
 
@@ -112,7 +108,7 @@ class OpenAIBackend(BaseBackend):
                     "strict": True,
                 },
             },
-            **_request_args(params, _CHAT_ARGS),
+            **request_args(params, _CHAT_ARGS),
         )
         return Response(
             content=parse_json(_content(completion)), usage=_usage(completion)
@@ -126,7 +122,7 @@ class OpenAIBackend(BaseBackend):
         settings: ResolvedConnection,
     ) -> Response[list[list[float]]]:
         response = self._client(settings).embeddings.create(
-            model=model, input=list(texts), **_request_args(params, _EMBEDDING_ARGS)
+            model=model, input=list(texts), **request_args(params, _EMBEDDING_ARGS)
         )
         vectors = [
             item.embedding for item in sorted(response.data, key=attrgetter("index"))
@@ -138,53 +134,31 @@ class OpenAIBackend(BaseBackend):
         return Response(content=vectors, usage=_usage(response))
 
     def _unsupported_param(self, exc: BaseException) -> str | None:
+        # Only the provider may retract a default: skllm's own BackendError
+        # quotes model output, which could otherwise name a param by accident.
+        if not isinstance(exc, APIStatusError):
+            return None
+
         param = getattr(exc, "param", None)
         if isinstance(param, str) and param in self.injected_defaults:
             return param
 
-        body = getattr(exc, "body", None)
+        body = exc.body
         message = str(body.get("message", "")) if isinstance(body, dict) else str(exc)
-        if "support" not in message.lower():
-            return None
-        return next((name for name in self.injected_defaults if name in message), None)
-
-    def _retry_after(self, exc: BaseException) -> float | None:
-        headers = getattr(getattr(exc, "response", None), "headers", None)
-        if not headers:
-            return None
-        for header, scale in (("retry-after-ms", 0.001), ("retry-after", 1.0)):
-            raw = headers.get(header)
-            if raw:
-                try:
-                    return float(raw) * scale
-                except ValueError:  # the HTTP-date form; fall back to backoff
-                    continue
-        return None
+        return named_unsupported_param(message, self.injected_defaults)
 
     def _client(self, settings: ResolvedConnection) -> OpenAI:
-        """Reuse one client per distinct connection, keeping the pool warm."""
-        options = dict(settings.client_options)
-        key = (
+        return _CLIENTS.get(
             self.provider,
-            settings.api_key,
-            settings.base_url,
-            settings.timeout,
-            repr(sorted(options.items(), key=itemgetter(0))),
+            settings,
+            lambda: OpenAI(
+                api_key=settings.api_key or KEYLESS_API_KEY,
+                base_url=settings.base_url,
+                timeout=settings.timeout,
+                max_retries=0,  # scikit-llm owns the retry policy
+                **settings.client_options,
+            ),
         )
-        with _CLIENTS_LOCK:
-            client = _CLIENTS.get(key)
-            if client is None:
-                if len(_CLIENTS) >= _MAX_CACHED_CLIENTS:
-                    _CLIENTS.clear()
-                client = OpenAI(
-                    api_key=settings.api_key or KEYLESS_API_KEY,
-                    base_url=settings.base_url,
-                    timeout=settings.timeout,
-                    max_retries=0,  # scikit-llm owns the retry policy
-                    **options,
-                )
-                _CLIENTS[key] = client
-            return client
 
 
 class OllamaBackend(OpenAIBackend):
@@ -201,17 +175,6 @@ class OllamaBackend(OpenAIBackend):
     def resolve(self, connection: Connection | None = None) -> ResolvedConnection:
         settings = super().resolve(connection)
         return replace(settings, base_url=_ollama_url(settings.base_url))
-
-
-def _request_args(
-    params: Mapping[str, Any], accepted: frozenset[str]
-) -> dict[str, Any]:
-    """Route params the SDK does not name through ``extra_body``."""
-    args = {name: value for name, value in params.items() if name in accepted}
-    unnamed = {name: value for name, value in params.items() if name not in accepted}
-    if unnamed:
-        args["extra_body"] = {**args.get("extra_body", {}), **unnamed}
-    return args
 
 
 def _ollama_url(base_url: str | None) -> str:

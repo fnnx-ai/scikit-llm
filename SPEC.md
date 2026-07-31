@@ -489,10 +489,10 @@ FNNX validates inputs against these schemas at compute time; the FNNX local hand
   - [x] OpenAI adapter (chat, JSON-schema structured outputs, embeddings) and the Ollama profile over it (default base URL, keyless); advisory-default injection (temperature 0, `reasoning_effort: "none"` where accepted) with unsupported-param strip-and-retry-once, per-model caching, seed list for known reasoning families, user params never touched; retry with backoff
   - [x] Fake in-memory test backend registered via the registry, used as the standard test double
   - [x] Tests: parser, registry, adapter behavior against a mocked OpenAI SDK, retry/backoff, usage capture
-- [ ] Add anthropic, google, and litellm backends
-  - [ ] Anthropic adapter (tool-use structured outputs, no embeddings), Google adapter via `google-genai` (chat, response-schema, embeddings), LiteLLM passthrough adapter
-  - [ ] Lazy imports with `pip install scikit-llm[<extra>]` error messages
-  - [ ] Tests per adapter against mocked SDKs, including missing-dependency errors
+- [x] Add anthropic, google, and litellm backends
+  - [x] Anthropic adapter (tool-use structured outputs, no embeddings), Google adapter via `google-genai` (chat, response-schema, embeddings), LiteLLM passthrough adapter
+  - [x] Lazy imports with `pip install scikit-llm[<extra>]` error messages
+  - [x] Tests per adapter against mocked SDKs, including missing-dependency errors
 - [ ] Add core estimator infrastructure
   - [ ] Base estimator classes in `skllm/core/`: verbatim param storage, `__sklearn_tags__`, fitted-state conventions, stateful/stateless split (`NotFittedError` only for stateful estimators), default model strings (`openai::gpt-5.6-sol` chat, `openai::text-embedding-3-small` embeddings), alias charset validation, `prompt_template` placeholder validation, text input handling (list/ndarray/Series), empty-batch short-circuit
   - [ ] Concurrent request engine with `max_concurrency`-bounded parallelism and `verbose`-controlled progress; `on_error` fill/raise policy with warning + per-sample error report attribute

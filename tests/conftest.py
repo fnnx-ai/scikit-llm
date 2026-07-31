@@ -5,7 +5,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from skllm.backends import base, openai, register_backend, registry
+from skllm.backends import base, register_backend, registry
 from tests.fakes import FakeBackend
 
 FAKE_PROVIDER = "fake"
@@ -28,7 +28,8 @@ def clean_process_caches() -> Iterator[None]:
     """Reset the caches adapters keep for the process lifetime."""
     yield
     base._UNSUPPORTED.clear()
-    openai._CLIENTS.clear()
+    for cache in base._CLIENT_CACHES:
+        cache.clear()
 
 
 @pytest.fixture

@@ -2732,7 +2732,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.40" },
     { name = "fnnx", extras = ["extras"], specifier = ">=0.0.12" },
-    { name = "google-genai", marker = "extra == 'google'", specifier = ">=1.0" },
+    { name = "google-genai", marker = "extra == 'google'", specifier = ">=1.24" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.60" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "openai", specifier = ">=1.50" },

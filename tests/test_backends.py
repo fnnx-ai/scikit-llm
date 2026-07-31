@@ -134,6 +134,28 @@ def test_builtin_backends_load_lazily_and_are_reused() -> None:
     assert isinstance(get_backend("ollama"), OllamaBackend)
 
 
+# The credential requirement each adapter declares. Config resolution and, later,
+# save-time bundle discovery read it, so google declares the generic name even
+# though resolution additionally accepts the more specific GEMINI_API_KEY.
+@pytest.mark.parametrize(
+    ("provider", "credential_env_var"),
+    [
+        ("openai", "OPENAI_API_KEY"),
+        ("ollama", None),
+        ("anthropic", "ANTHROPIC_API_KEY"),
+        ("google", "GOOGLE_API_KEY"),
+        ("litellm", None),
+    ],
+)
+def test_every_builtin_adapter_declares_its_credential_requirement(
+    provider: str, credential_env_var: str | None
+) -> None:
+    backend = get_backend(provider)
+
+    assert isinstance(backend, Backend)
+    assert backend.credential_env_var == credential_env_var
+
+
 def test_unknown_prefix_lists_the_available_providers() -> None:
     with pytest.raises(ValueError) as excinfo:
         get_backend("cohere")
