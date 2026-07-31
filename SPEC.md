@@ -493,13 +493,13 @@ FNNX validates inputs against these schemas at compute time; the FNNX local hand
   - [x] Anthropic adapter (tool-use structured outputs, no embeddings), Google adapter via `google-genai` (chat, response-schema, embeddings), LiteLLM passthrough adapter
   - [x] Lazy imports with `pip install scikit-llm[<extra>]` error messages
   - [x] Tests per adapter against mocked SDKs, including missing-dependency errors
-- [ ] Add core estimator infrastructure
-  - [ ] Base estimator classes in `skllm/core/`: verbatim param storage, `__sklearn_tags__`, fitted-state conventions, stateful/stateless split (`NotFittedError` only for stateful estimators), default model strings (`openai::gpt-5.6-sol` chat, `openai::text-embedding-3-small` embeddings), alias charset validation, `prompt_template` placeholder validation, text input handling (list/ndarray/Series), empty-batch short-circuit
-  - [ ] Concurrent request engine with `max_concurrency`-bounded parallelism and `verbose`-controlled progress; `on_error` fill/raise policy with warning + per-sample error report attribute
-  - [ ] Usage aggregation (per-call and cumulative, optional cost via pricing map) and best-effort OTel `gen_ai` span emission behind an optional import
-  - [ ] `alias` param and requirement-introspection hook on the base classes (self-reporting provider + alias pairs, recursing through skllm-native nesting incl. fit-created components); alias-targeted override resolution in the request path (override > stored `model_params` > defaults)
-  - [ ] `__getstate__` credential stripping
-  - [ ] Tests: sklearn compliance (clone/get_params/pipeline), error policies, stateless transform-without-fit, usage math, span emission on/off, key stripping
+- [x] Add core estimator infrastructure
+  - [x] Base estimator classes in `skllm/core/`: verbatim param storage, `__sklearn_tags__`, fitted-state conventions, stateful/stateless split (`NotFittedError` only for stateful estimators), default model strings (`openai::gpt-5.6-sol` chat, `openai::text-embedding-3-small` embeddings), alias charset validation, `prompt_template` placeholder validation, text input handling (list/ndarray/Series), empty-batch short-circuit
+  - [x] Concurrent request engine with `max_concurrency`-bounded parallelism and `verbose`-controlled progress; `on_error` fill/raise policy with warning + per-sample error report attribute
+  - [x] Usage aggregation (per-call and cumulative, optional cost via pricing map) and best-effort OTel `gen_ai` span emission behind an optional import
+  - [x] `alias` param and requirement-introspection hook on the base classes (self-reporting provider + alias pairs, recursing through skllm-native nesting incl. fit-created components); alias-targeted override resolution in the request path (override > stored `model_params` > defaults)
+  - [x] `__getstate__` credential stripping
+  - [x] Tests: sklearn compliance (clone/get_params/pipeline), error policies, stateless transform-without-fit, usage math, span emission on/off, key stripping
 - [ ] Add zero-shot and few-shot classifiers
   - [ ] `ZeroShotClassifier`, `FewShotClassifier`, `MultiLabelZeroShotClassifier`, `MultiLabelFewShotClassifier` in `skllm/classification.py` with structured-output label constraints, string-label validation, `default_label`/`max_labels` (schema constraint plus truncation backstop), prompt templates in `skllm/prompts/`, `prompt_template` override validation
   - [ ] `n_predictors` sampled voting: majority-vote `predict`, vote-fraction `predict_proba`, one-hot proba when unset, determinism-default suppression for vote calls, temperature-0 conflict error, per-vote failure tolerance (single- and multi-label semantics)

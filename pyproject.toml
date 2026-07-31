@@ -35,7 +35,9 @@ litellm = ["litellm>=1.60"]
 all = ["scikit-llm[anthropic,google,litellm]"]
 
 [dependency-groups]
-dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11"]
+# The opentelemetry SDK is a test-only dependency: it exercises the optional
+# span emission, which the library itself never imports as a hard requirement.
+dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11", "opentelemetry-sdk>=1.20"]
 
 [tool.setuptools.dynamic]
 version = { attr = "skllm.__version__" }
@@ -73,7 +75,8 @@ ignore = ["E501", "N803", "N806"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/*" = ["S101"]
+# S101: assertions are the point; S301: unpickling our own payload is the test.
+"tests/*" = ["S101", "S301"]
 
 [tool.mypy]
 files = ["skllm", "tests"]
