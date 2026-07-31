@@ -59,6 +59,9 @@ class AnthropicBackend(BaseBackend):
     credential_env_var: ClassVar[str | None] = "ANTHROPIC_API_KEY"
     # No reasoning default beyond the inherited temperature 0: extended thinking
     # is opt-in on this API, so there is nothing to switch off.
+    # A tool's input_schema is passed to the model as written, so array bounds
+    # reach it rather than being rejected.
+    schema_constraints: ClassVar[frozenset[str]] = frozenset({"maxItems"})
     transient_errors: ClassVar[tuple[type[BaseException], ...]] = (
         APITimeoutError,
         APIConnectionError,

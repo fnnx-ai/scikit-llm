@@ -500,10 +500,10 @@ FNNX validates inputs against these schemas at compute time; the FNNX local hand
   - [x] `alias` param and requirement-introspection hook on the base classes (self-reporting provider + alias pairs, recursing through skllm-native nesting incl. fit-created components); alias-targeted override resolution in the request path (override > stored `model_params` > defaults)
   - [x] `__getstate__` credential stripping
   - [x] Tests: sklearn compliance (clone/get_params/pipeline), error policies, stateless transform-without-fit, usage math, span emission on/off, key stripping
-- [ ] Add zero-shot and few-shot classifiers
-  - [ ] `ZeroShotClassifier`, `FewShotClassifier`, `MultiLabelZeroShotClassifier`, `MultiLabelFewShotClassifier` in `skllm/classification.py` with structured-output label constraints, string-label validation, `default_label`/`max_labels` (schema constraint plus truncation backstop), prompt templates in `skllm/prompts/`, `prompt_template` override validation
-  - [ ] `n_predictors` sampled voting: majority-vote `predict`, vote-fraction `predict_proba`, one-hot proba when unset, determinism-default suppression for vote calls, temperature-0 conflict error, per-vote failure tolerance (single- and multi-label semantics)
-  - [ ] Tests: happy paths, label-out-of-set failure, non-string y rejection, multi-label shapes, proba fractions and one-hot degeneracy, temperature-conflict error, prompt content
+- [x] Add zero-shot and few-shot classifiers
+  - [x] `ZeroShotClassifier`, `FewShotClassifier`, `MultiLabelZeroShotClassifier`, `MultiLabelFewShotClassifier` in `skllm/classification.py` with structured-output label constraints, string-label validation, `default_label`/`max_labels` (schema constraint plus truncation backstop), prompt templates in `skllm/prompts/`, `prompt_template` override validation
+  - [x] `n_predictors` sampled voting: majority-vote `predict`, vote-fraction `predict_proba`, one-hot proba when unset, determinism-default suppression for vote calls, temperature-0 conflict error, per-vote failure tolerance (single- and multi-label semantics)
+  - [x] Tests: happy paths, label-out-of-set failure, non-string y rejection, multi-label shapes, proba fractions and one-hot degeneracy, temperature-conflict error, prompt content
 - [ ] Add vectorizer and dynamic few-shot classifier
   - [ ] `Vectorizer` in `skllm/vectorization.py` (batching, 2-D float output, all-or-nothing error behavior)
   - [ ] `DynamicFewShotClassifier` with per-class sklearn `NearestNeighbors` retrieval, small-class handling, default vectorizer models (`openai::text-embedding-3-small`, `google::gemini-embedding-001`), explicit-vectorizer requirement for all other providers

@@ -173,6 +173,11 @@ class BaseBackend(ABC):
     #: The injected defaults that exist purely for determinism; sampled calls
     #: (``deterministic=False``) drop them so votes can differ.
     determinism_defaults: ClassVar[frozenset[str]] = frozenset({"temperature"})
+    #: JSON Schema keywords beyond the common core that this provider's
+    #: structured mode accepts. Opt-in per adapter: OpenAI's strict mode rejects
+    #: an unsupported keyword outright rather than ignoring it, so a schema
+    #: constraint that is merely advisory elsewhere would break requests here.
+    schema_constraints: ClassVar[frozenset[str]] = frozenset()
 
     @property
     def credential_env_vars(self) -> tuple[str, ...]:

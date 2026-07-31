@@ -258,33 +258,54 @@ class BaseLLMEstimator(BaseEstimator):
         *,
         fill: Callable[[], _R],
     ) -> list[_R]:
-        """Answer every item concurrently under this estimator's error policy.
+        """Answer every item once, concurrently, under this estimator's error policy.
 
         ``fill`` is a factory rather than a value so that each failed sample gets
         its own object: a shared mutable fill would alias across samples.
         """
-        results: list[_R] = []
+        answers = self._run_repeated(items, call, repeats=1)
+        return [answer[0] if answer else fill() for answer in answers]
+
+    def _run_repeated(
+        self, items: Sequence[_T], call: Callable[[_T], _R], *, repeats: int
+    ) -> list[list[_R]]:
+        """Answer every item ``repeats`` times, returning the answers that arrived.
+
+        All attempts of all items share one bounded pool, so ``max_concurrency``
+        stays the cap on in-flight requests however many attempts each item takes.
+        An item whose every attempt failed answers with an empty list and is
+        reported as a failed sample; partial failures are left to the caller to
+        aggregate over.
+        """
+        attempts = [item for item in items for _ in range(repeats)]
+        answers: list[list[_R]] = []
         errors: list[SampleError] = []
+        raising = self.on_error == "raise"
         with collect_usage() as usage:
             try:
                 outcomes = map_concurrently(
                     call,
-                    items,
+                    attempts,
                     max_concurrency=self.max_concurrency,
                     verbose=self.verbose,
                     description=type(self).__name__,
-                    fail_fast=self.on_error == "raise",
+                    # One attempt per item makes any failure a sample failure,
+                    # so the batch can abort the moment one arrives. Repeated
+                    # attempts tolerate individual failures, and whether an item
+                    # lost every one of them is only known once they are all in.
+                    fail_fast=raising and repeats == 1,
                 )
-                for index, outcome in enumerate(outcomes):
-                    if isinstance(outcome, _UNFILLABLE):
-                        raise outcome
-                    if isinstance(outcome, Exception):
-                        errors.append(
-                            SampleError(index, f"{type(outcome).__name__}: {outcome}")
-                        )
-                        results.append(fill())
-                    else:
-                        results.append(outcome)
+                for index, group in enumerate(_grouped(outcomes, repeats)):
+                    for outcome in group:
+                        if isinstance(outcome, _UNFILLABLE):
+                            raise outcome
+                    answers.append(
+                        [item for item in group if not isinstance(item, Exception)]
+                    )
+                    if not answers[-1]:
+                        if raising:
+                            raise _first_failure(group)
+                        errors.append(SampleError(index, _reason(group, repeats)))
             except BaseException:
                 # An aborted batch still paid for the requests it did complete,
                 # and a report left describing the previous operation would be
@@ -296,11 +317,13 @@ class BaseLLMEstimator(BaseEstimator):
         self._record_usage(usage.record, tuple(errors))
         if errors:
             warnings.warn(
-                f"{type(self).__name__}: {len(errors)} of {len(results)} samples "
+                f"{type(self).__name__}: {len(errors)} of {len(answers)} samples "
                 "failed and were filled; see the errors_ attribute for the reasons.",
-                stacklevel=3,
+                # Estimators reach this through one method of their own, so the
+                # fourth frame is the caller's own predict/transform call.
+                stacklevel=4,
             )
-        return results
+        return answers
 
     def _record_usage(
         self, record: UsageRecord, errors: tuple[SampleError, ...]
@@ -420,6 +443,24 @@ def as_texts(X: Any) -> list[str]:
                 "a string."
             )
     return texts
+
+
+def _grouped(outcomes: Sequence[_T], size: int) -> Iterator[Sequence[_T]]:
+    """Re-split the flattened attempts into one group per item."""
+    for start in range(0, len(outcomes), size):
+        yield outcomes[start : start + size]
+
+
+def _first_failure(group: Sequence[Any]) -> Exception:
+    """The failure an item reports; only called when every attempt of it failed."""
+    return next(item for item in group if isinstance(item, Exception))
+
+
+def _reason(group: Sequence[Any], repeats: int) -> str:
+    """Why an item has no answer, from the first of its failed attempts."""
+    failure = _first_failure(group)
+    reason = f"{type(failure).__name__}: {failure}"
+    return reason if repeats == 1 else f"all {repeats} attempts failed; first: {reason}"
 
 
 def _nested(value: Any) -> Iterator[BaseLLMEstimator]:

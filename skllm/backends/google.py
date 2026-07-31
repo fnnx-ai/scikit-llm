@@ -47,6 +47,8 @@ class GoogleBackend(BaseBackend):
     # No reasoning default: Gemini's control is a per-model token budget whose
     # legal minimum differs per model, so a blanket "off" would be rejected more
     # often than honored. Callers set thinking_config through model_params.
+    # response_json_schema keeps the array bounds of the schema it is given.
+    schema_constraints: ClassVar[frozenset[str]] = frozenset({"maxItems"})
     transient_errors: ClassVar[tuple[type[BaseException], ...]] = (
         errors.ServerError,
         httpx.TransportError,
