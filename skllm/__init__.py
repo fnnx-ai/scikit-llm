@@ -11,7 +11,7 @@ from skllm.config import MissingCredentialError, config_context
 from skllm.ensemble import ConsensusClassifier
 from skllm.extraction import StructuredExtractor
 from skllm.scoring import RubricScorer
-from skllm.serialization import save
+from skllm.serialization import InferenceModel, load, save
 from skllm.tagging import NER
 from skllm.text2text import Summarizer, Translator
 from skllm.vectorization import Vectorizer
@@ -25,6 +25,7 @@ __all__ = [
     "ConsensusClassifier",
     "DynamicFewShotClassifier",
     "FewShotClassifier",
+    "InferenceModel",
     "MissingCredentialError",
     "MultiLabelFewShotClassifier",
     "MultiLabelZeroShotClassifier",
@@ -36,6 +37,7 @@ __all__ = [
     "ZeroShotClassifier",
     "__version__",
     "config_context",
+    "load",
     "register_backend",
     "save",
 ]

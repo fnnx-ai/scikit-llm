@@ -9,24 +9,29 @@ anything.
 
 The derived *kinds* travel in the bundle next to the schemas, so the loader
 turning JSON answers back into sklearn types reads the same derivation the
-manifest published.
+manifest published — which is also why the conversions live here, beside the
+schemas they have to agree with.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from typing import Any
 
+import numpy as np
 from sklearn.base import BaseEstimator, is_classifier, is_regressor
 
 from skllm.classification import _MultiLabelClassifier
-from skllm.clustering import ClusterLabeler
-from skllm.core import BaseLLMEstimator
+from skllm.clustering import ClusterLabeler, as_cluster_ids
+from skllm.core import BaseLLMEstimator, as_texts
 from skllm.extraction import StructuredExtractor
 from skllm.tagging import NER
 from skllm.vectorization import Vectorizer
 
 __all__ = [
+    "decode_output",
     "edges",
+    "encode_input",
     "entry_kind",
     "exit_kind",
     "input_schema",
@@ -118,6 +123,59 @@ def output_schema(kind: str, step: Any) -> dict[str, Any]:
     if kind == "records":
         return _array_of(_nullable(step._json_schema()))
     return dict(_ANY_ARRAY)
+
+
+def encode_input(kind: str, X: Any) -> list[Any]:
+    """A batch as the JSON array the bundle's input channel declares.
+
+    Validation is the estimators' own, so a batch rejected at the bundle's edge
+    is rejected in the same words the live object would have used.
+    """
+    if kind == "texts":
+        return as_texts(X)
+    if kind == "cluster_ids":
+        return as_cluster_ids(X)
+    return X.tolist() if hasattr(X, "tolist") else list(X)
+
+
+def decode_output(kind: str, values: Sequence[Any]) -> Any:
+    """A JSON answer as the container the live object would have returned."""
+    return _DECODERS.get(kind, list)(values)
+
+
+def _object_array(values: Sequence[Any]) -> np.ndarray:
+    """Labels, texts and names alike: object dtype is what carries a null fill."""
+    return np.asarray(values, dtype=object)
+
+
+def _label_lists(values: Sequence[Any]) -> list[list[str]]:
+    return [list(labels) for labels in values]
+
+
+def _scores(values: Sequence[Any]) -> np.ndarray:
+    """JSON has no NaN, so a filled sample arrives as null."""
+    return np.asarray(
+        [np.nan if value is None else value for value in values], dtype=float
+    )
+
+
+def _vectors(values: Sequence[Any]) -> np.ndarray:
+    # An empty batch of embeddings is two-dimensional — the shape the Vectorizer
+    # itself returns — where an empty JSON array would decode to a flat one.
+    if not values:
+        return np.empty((0, 0), dtype=float)
+    return np.asarray(values, dtype=float)
+
+
+_DECODERS: dict[str, Callable[[Sequence[Any]], Any]] = {
+    "labels": _object_array,
+    "label_lists": _label_lists,
+    "texts": _object_array,
+    "names": _object_array,
+    "scores": _scores,
+    "vectors": _vectors,
+    "records": list,
+}
 
 
 def _entry(obj: Any) -> Any:

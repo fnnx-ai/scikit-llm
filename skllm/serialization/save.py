@@ -27,7 +27,13 @@ from skllm.backends import get_backend
 from skllm.core import BaseLLMEstimator, Requirement
 from skllm.ensemble import ConsensusClassifier
 from skllm.serialization import discovery, schemas
-from skllm.serialization.wrapper import CONFIG_KEY, OVERRIDES_ATTRIBUTE, SkllmModel
+from skllm.serialization.wrapper import (
+    CONFIG_KEY,
+    INPUT_CHANNEL,
+    OUTPUT_CHANNEL,
+    OVERRIDES_ATTRIBUTE,
+    SkllmModel,
+)
 
 __all__ = ["save"]
 
@@ -91,6 +97,11 @@ def save(estimator: Any, path: str) -> None:
         "credentials": credentials,
         "base_urls": _base_url_attributes(requirements),
         "aliases": sorted({alias for _, alias in requirements if alias}),
+        # The top-level estimator's own alias, which the discovered set cannot
+        # single out (an internal component may be aliased too): a
+        # single-estimator bundle takes generation params unkeyed, so a loader
+        # forwarding an alias-targeted override needs to know whose it is.
+        "alias": estimator.alias if single else None,
         "model_params": dict(estimator.model_params or {}) if single else {},
         "models": [use._asdict() for use in uses],
     }
@@ -103,9 +114,9 @@ def save(estimator: Any, path: str) -> None:
     )
     builder.define_dtype(INPUT_DTYPE, schemas.input_schema(entry_kind))
     builder.define_dtype(OUTPUT_DTYPE, schemas.output_schema(exit_kind, exit_))
-    builder.add_input(JSON(name="X", content_type="JSON", dtype=INPUT_DTYPE))
+    builder.add_input(JSON(name=INPUT_CHANNEL, content_type="JSON", dtype=INPUT_DTYPE))
     builder.add_output(
-        JSON(name="predictions", content_type="JSON", dtype=OUTPUT_DTYPE)
+        JSON(name=OUTPUT_CHANNEL, content_type="JSON", dtype=OUTPUT_DTYPE)
     )
     for variable in _dynamic_attributes(config):
         builder.add_dynamic_attribute(variable)

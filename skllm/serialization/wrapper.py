@@ -26,6 +26,10 @@ from fnnx.variants.pyfunc import PyFunc
 CONFIG_KEY = "skllm"
 OVERRIDES_ATTRIBUTE = "overrides"
 
+#: The bundle's single input and output channel, as the manifest names them.
+INPUT_CHANNEL = "X"
+OUTPUT_CHANNEL = "predictions"
+
 
 class SkllmModel(PyFunc):
     """One static pyfunc wrapper for any saved scikit-llm object graph."""
@@ -57,8 +61,8 @@ class SkllmModel(PyFunc):
         attributes = self._checked(dynamic_attributes)
         model, settings = self._call_scope(attributes)
         with config_context(**settings):
-            answer = getattr(model, self._config["method"])(inputs["X"])
-        return {"predictions": _jsonable(answer)}
+            answer = getattr(model, self._config["method"])(inputs[INPUT_CHANNEL])
+        return {OUTPUT_CHANNEL: _jsonable(answer)}
 
     async def compute_async(self, inputs: dict, dynamic_attributes: dict) -> dict:
         """Run the batch off the event loop, so concurrent calls overlap."""
@@ -142,7 +146,16 @@ class SkllmModel(PyFunc):
         }
 
     def _alias_overrides(self, attributes: dict) -> dict:
-        """Per-alias generation params for a composite bundle."""
+        """Per-alias generation params for a composite bundle.
+
+        A member's params travel as the JSON they arrive as. Unlike the flat
+        attributes of a single-estimator bundle they are not declared, so
+        nothing says which of them a platform typed as a string for transport
+        and which are strings because the provider needs one (OpenAI's
+        ``user``) — and the bundle records nothing about what each member
+        stores to tell the two apart. Retyping them on a guess would rewrite
+        the second kind.
+        """
         overrides = _as_mapping(
             attributes.get(OVERRIDES_ATTRIBUTE), OVERRIDES_ATTRIBUTE
         )
@@ -154,7 +167,7 @@ class SkllmModel(PyFunc):
                 f"alias. Available aliases: {sorted(available)}."
             )
         return {
-            alias: _numeric(_as_mapping(params, f"{OVERRIDES_ATTRIBUTE}[{alias!r}]"))
+            alias: dict(_as_mapping(params, f"{OVERRIDES_ATTRIBUTE}[{alias!r}]"))
             for alias, params in overrides.items()
         }
 

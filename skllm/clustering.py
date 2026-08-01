@@ -30,7 +30,7 @@ from skllm.prompts import CLUSTER_NAMING, render_exemplars
 if TYPE_CHECKING:
     from typing import Self
 
-__all__ = ["ClusterLabeler"]
+__all__ = ["ClusterLabeler", "as_cluster_ids"]
 
 DEFAULT_N_EXEMPLARS = 10
 
@@ -87,7 +87,7 @@ class ClusterLabeler(TransformerMixin, BasePromptEstimator):
     def fit(self, X: Any, y: Any) -> Self:
         """Name every cluster in ``y`` from a sample of the texts it holds."""
         self._check_params()
-        exemplars = self._exemplars(as_texts(X), _as_cluster_ids(y))
+        exemplars = self._exemplars(as_texts(X), as_cluster_ids(y))
         names = self._run_batch(list(exemplars.values()), self._name, fill=str)
         self.names_ = dict(zip(exemplars, names, strict=True))
         return self
@@ -101,7 +101,7 @@ class ClusterLabeler(TransformerMixin, BasePromptEstimator):
         leaving the cumulative total intact.
         """
         self._check_ready()
-        names = [self._name_of(cluster) for cluster in _as_cluster_ids(y)]
+        names = [self._name_of(cluster) for cluster in as_cluster_ids(y)]
         self._record_usage(UsageRecord(), ())
         return np.asarray(names, dtype=object)
 
@@ -174,7 +174,7 @@ def _sample(
     return tuple(texts[position] for position in sorted(positions))
 
 
-def _as_cluster_ids(y: Any) -> list[int]:
+def as_cluster_ids(y: Any) -> list[int]:
     """Normalize cluster ids (list, numpy array or pandas Series) to a list."""
     if y is None or isinstance(y, (str, int, float)):
         raise TypeError(
