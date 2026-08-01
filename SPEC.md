@@ -521,9 +521,9 @@ FNNX validates inputs against these schemas at compute time; the FNNX local hand
 - [x] Add rubric scorer and cluster labeler
   - [x] `RubricScorer` in `skllm/scoring.py` (scale clamping, NaN fill) and `ClusterLabeler` in `skllm/clustering.py` (`random_state`-controlled exemplar sampling, per-cluster naming calls, `-1`→None, unseen-id error, `fit_transform` override)
   - [x] Tests: clamping, NaN policy, naming-call counts, transform mapping, `fit_transform` semantics
-- [ ] Add consensus ensemble classifier
-  - [ ] `ConsensusClassifier` in `skllm/ensemble.py`: member cloning into `estimators_` at fit, concurrent voting, weights, deterministic tie-break, weighted vote-fraction `predict_proba`, `default_label` fill for no-vote samples
-  - [ ] Tests: voting, ties, weighted votes, member-failure behavior, all-members-fail fill, constructor members left unmutated
+- [x] Add consensus ensemble classifier
+  - [x] `ConsensusClassifier` in `skllm/ensemble.py`: member cloning into `estimators_` at fit, concurrent voting, weights, deterministic tie-break, weighted vote-fraction `predict_proba`, `default_label` fill for no-vote samples
+  - [x] Tests: voting, ties, weighted votes, member-failure behavior, all-members-fail fill, constructor members left unmutated
 - [ ] Add FNNX bundle saving and runtime execution
   - [ ] Stable `__getstate__`/`__setstate__` contract on all estimators: credential stripping plus a versioned state dict (not raw `__dict__`)
   - [ ] Static self-contained PyFunc wrapper module in `skllm/serialization/`; `skllm.save` via `PyfuncBuilder`: whole-graph joblib payload, two-level provider discovery (generic sklearn graph walk + the base-class introspection hook), `extra_values` identity metadata, per-bundle JSON Schema generation for IO dtypes via edge-typing (texts/ids input; task- and fitted-state-specific outputs incl. `classes_` enums and compiled extraction schemas; convention-derived schemas for foreign exit steps with permissive fallback; entry/exit kinds recorded in `extra_values`), manifest env_vars + dynamic_attributes with the secret/generation-param tag conventions, producer name `skllm.fnnx.ai` with `skllm.fnnx.ai::<task>:v1` tags, `env.json` pinning scikit-llm and discovered provider extras; sklearn composite (Pipeline) support; estimator `.save(path)` method delegating to `skllm.save`

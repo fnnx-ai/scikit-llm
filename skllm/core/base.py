@@ -166,20 +166,24 @@ class BaseLLMEstimator(BaseEstimator):
 
     def _check_params(self) -> None:
         """Validate constructor params and resolve the backend, at fit/first use."""
+        self._check_batch_params()
         if self.alias is not None:
             validate_alias(self.alias)
-        if self.on_error not in ON_ERROR_POLICIES:
-            raise ValueError(
-                f"Invalid on_error={self.on_error!r}: expected one of "
-                f"{list(ON_ERROR_POLICIES)}."
-            )
-        check_count("max_concurrency", self.max_concurrency, required=True)
         if self.model_params is not None and not isinstance(self.model_params, Mapping):
             raise TypeError(
                 "model_params must be a mapping of provider request params, got "
                 f"{type(self.model_params).__name__}."
             )
         self._backend()
+
+    def _check_batch_params(self) -> None:
+        """Validate how a batch is run, which even a model-less ensemble does."""
+        if self.on_error not in ON_ERROR_POLICIES:
+            raise ValueError(
+                f"Invalid on_error={self.on_error!r}: expected one of "
+                f"{list(ON_ERROR_POLICIES)}."
+            )
+        check_count("max_concurrency", self.max_concurrency, required=True)
 
     def _check_ready(self) -> None:
         """Guard predict/transform: fitted where required, valid params either way."""
@@ -321,12 +325,16 @@ class BaseLLMEstimator(BaseEstimator):
         usage.add(UsageRecord(failures=len(errors)))
         self._record_usage(usage.record, tuple(errors))
         if errors:
-            warnings.warn(
-                f"{type(self).__name__}: {len(errors)} of {len(answers)} samples "
-                "failed and were filled; see the errors_ attribute for the reasons.",
-                stacklevel=_caller_stacklevel(),
-            )
+            self._warn_filled(len(errors), len(answers))
         return answers
+
+    def _warn_filled(self, filled: int, total: int) -> None:
+        """Say that a batch holds fill values, at the caller's own call site."""
+        warnings.warn(
+            f"{type(self).__name__}: {filled} of {total} samples failed and were "
+            "filled; see the errors_ attribute for the reasons.",
+            stacklevel=_caller_stacklevel(),
+        )
 
     def _record_usage(
         self, record: UsageRecord, errors: tuple[SampleError, ...]

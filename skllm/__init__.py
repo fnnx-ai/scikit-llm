@@ -8,6 +8,7 @@ from skllm.classification import (
 )
 from skllm.clustering import ClusterLabeler
 from skllm.config import MissingCredentialError, config_context
+from skllm.ensemble import ConsensusClassifier
 from skllm.extraction import StructuredExtractor
 from skllm.scoring import RubricScorer
 from skllm.tagging import NER
@@ -20,6 +21,7 @@ __author__ = "Iryna Kondrashchenko, Oleh Kostromin"
 __all__ = [
     "NER",
     "ClusterLabeler",
+    "ConsensusClassifier",
     "DynamicFewShotClassifier",
     "FewShotClassifier",
     "MissingCredentialError",
