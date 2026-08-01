@@ -222,6 +222,23 @@ def test_an_extractor_bundle_publishes_the_extraction_schema(
     assert payload(path).schema == Movie.model_json_schema()
 
 
+def test_an_extractor_bundle_serves_where_pydantic_is_not_installed(
+    openai: FakeBackend, bundle: Callable[..., str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """pydantic is a save-time dependency; the schema travels already compiled."""
+    record = {"name": "Dune: Part Two", "year": 2024}
+    openai.structured_script = record
+    path = bundle(StructuredExtractor(model="openai::gpt-5", schema=Movie, verbose=0))
+
+    # None in sys.modules fails an `import pydantic` the way an absent
+    # distribution would — including for modules that already imported it.
+    for name in [n for n in sys.modules if n.startswith("pydantic")]:
+        monkeypatch.setitem(sys.modules, name, None)
+    answer = Runtime(path).compute({"X": ["Dune: Part Two came out in 2024."]}, {})
+
+    assert answer["predictions"] == [record]
+
+
 def test_a_pipeline_types_its_edges_from_the_steps_that_see_them(
     openai: FakeBackend, bundle: Callable[..., str]
 ) -> None:

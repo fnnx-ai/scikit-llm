@@ -532,6 +532,6 @@ FNNX validates inputs against these schemas at compute time; the FNNX local hand
 - [x] Add bundle loading and the InferenceModel facade
   - [x] `InferenceModel` returned by `skllm.load`: task-method surface from the recorded mapping, IO encode/decode to sklearn/skllm types from the recorded entry/exit kinds, host-config→dynamic-attributes credential and override forwarding, handler selection (`LocalHandler` default, `StdIOHandler` isolated), `unwrap()`
   - [x] Tests: facade round-trip equivalence for every estimator and a Vectorizer→LogisticRegression pipeline, credential forwarding through `config_context`, `unwrap()` state fidelity
-- [ ] Add migration guide and v2 README
-  - [ ] `MIGRATION.md` mapping all v1 public names to v2 equivalents or documenting removals (tunables, Vertex/PaLM, GGUF, CoT, `SKLLMConfig`)
-  - [ ] Rewrite `README.md` for the v2 API: install + extras, per-task quickstarts, credentials/`config_context`, serialization and serving, provider matrix
+- [x] Add migration guide and v2 README
+  - [x] `MIGRATION.md` mapping all v1 public names to v2 equivalents or documenting removals (tunables, Vertex/PaLM, GGUF, CoT, `SKLLMConfig`)
+  - [x] Rewrite `README.md` for the v2 API: install + extras, per-task quickstarts, credentials/`config_context`, serialization and serving, provider matrix

@@ -358,6 +358,15 @@ def test_invalid_alias_is_reported_at_fit() -> None:
         ToyClassifier(alias="Team A").fit(None, ["a", "b"])
 
 
+def test_invalid_alias_is_reported_on_a_stateless_first_use(
+    fake_backend: FakeBackend,
+) -> None:
+    with pytest.raises(ValueError, match=r"\[a-z\]\[a-z0-9_\]\*"):
+        ToyRewriter(model=FAKE_MODEL, alias="Team A").transform(["a text"])
+
+    assert fake_backend.calls == []
+
+
 @pytest.mark.parametrize(
     ("params", "message"),
     [
