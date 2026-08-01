@@ -511,10 +511,10 @@ FNNX validates inputs against these schemas at compute time; the FNNX local hand
 - [x] Add summarizer and translator
   - [x] `Summarizer` (`max_words`, `focus`) and `Translator` (`output_language`) in `skllm/text2text.py` as stateless transformers without `predict` alias
   - [x] Tests: outputs, fill-on-failure with empty string, param handling
-- [ ] Add NER with inline-tagged output
-  - [ ] `NER` in `skllm/tagging.py`: entity schema, tagged-rewrite prompting, strip-tags-equals-input validation with whitespace-tolerant repair, failure → untagged original
-  - [ ] HTML rendering utility for tagged text
-  - [ ] Tests: tagging invariant, corrupted-output handling, rendering
+- [x] Add NER with inline-tagged output
+  - [x] `NER` in `skllm/tagging.py`: entity schema, tagged-rewrite prompting, strip-tags-equals-input validation with whitespace-tolerant repair, failure → untagged original
+  - [x] HTML rendering utility for tagged text
+  - [x] Tests: tagging invariant, corrupted-output handling, rendering
 - [ ] Add structured extractor
   - [ ] `StructuredExtractor` in `skllm/extraction.py`: JSON Schema dict or pydantic class input, pydantic→dict schema compilation at the pickling boundary, native structured outputs with salvage fallback, per-sample schema validation
   - [ ] Tests: both schema input forms, conforming/non-conforming outputs, pickle round-trip schema normalization

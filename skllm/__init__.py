@@ -7,6 +7,7 @@ from skllm.classification import (
     ZeroShotClassifier,
 )
 from skllm.config import MissingCredentialError, config_context
+from skllm.tagging import NER
 from skllm.text2text import Summarizer, Translator
 from skllm.vectorization import Vectorizer
 
@@ -14,6 +15,7 @@ __version__ = "2.0.0"
 __author__ = "Iryna Kondrashchenko, Oleh Kostromin"
 
 __all__ = [
+    "NER",
     "DynamicFewShotClassifier",
     "FewShotClassifier",
     "MissingCredentialError",
