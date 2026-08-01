@@ -634,6 +634,26 @@ def test_fill_policy_reports_every_failed_sample(fake_backend: FakeBackend) -> N
     assert estimator.usage_.last.failures == 1
 
 
+@pytest.mark.parametrize(
+    "run",
+    [
+        lambda X: ToyClassifier().fit(None, ["a", "b"]).predict(X),
+        lambda X: ToyRewriter(model=FAKE_MODEL, verbose=0).transform(X),
+    ],
+    ids=["predict", "transform"],
+)
+def test_the_fill_warning_points_at_the_calling_code(
+    run: Any, fake_backend: FakeBackend
+) -> None:
+    """sklearn wraps transform, so a fixed stacklevel would name its shim instead."""
+    fake_backend.chat_script = fail_one_sample("b")
+
+    with pytest.warns(UserWarning) as caught:
+        run(["a", "b"])
+
+    assert caught[0].filename == __file__
+
+
 def test_fill_values_are_not_shared_between_samples(fake_backend: FakeBackend) -> None:
     fake_backend.embedding_script = RuntimeError("the provider rejected the request")
     vectorizer = ToyVectorizer(model=FAKE_MODEL)

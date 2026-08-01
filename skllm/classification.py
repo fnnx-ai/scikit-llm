@@ -23,6 +23,7 @@ from skllm.core import (
     DEFAULT_MAX_CONCURRENCY,
     BasePromptEstimator,
     as_texts,
+    check_count,
 )
 from skllm.prompts import (
     FEW_SHOT_MULTI_LABEL,
@@ -106,7 +107,7 @@ class _BaseClassifier(ClassifierMixin, BasePromptEstimator):
 
     def _check_params(self) -> None:
         super()._check_params()
-        _check_count("n_predictors", self.n_predictors)
+        check_count("n_predictors", self.n_predictors)
         if self._repeats() > 1 and self._request_params().get("temperature") == 0:
             raise ValueError(
                 f"n_predictors={self.n_predictors} samples that many answers per "
@@ -278,7 +279,7 @@ class _MultiLabelClassifier(_BaseClassifier):
 
     def _check_params(self) -> None:
         super()._check_params()
-        _check_count("max_labels", self.max_labels)
+        check_count("max_labels", self.max_labels)
 
     def _decide(self, votes: Sequence[tuple[str, ...]]) -> list[str]:
         if len(votes) == 1:
@@ -420,7 +421,7 @@ class DynamicFewShotClassifier(_FewShotMixin, _SingleLabelClassifier):
 
     def _check_params(self) -> None:
         super()._check_params()
-        _check_count("n_examples", self.n_examples, required=True)
+        check_count("n_examples", self.n_examples, required=True)
         if self.vectorizer is not None and not isinstance(self.vectorizer, Vectorizer):
             raise TypeError(
                 "vectorizer must be a skllm Vectorizer or None, got "
@@ -564,14 +565,6 @@ def _distinct(rows: Sequence[Any]) -> list[str]:
     if not labels:
         raise ValueError("y holds no labels: a classifier needs at least one to fit.")
     return sorted(labels)
-
-
-def _check_count(name: str, value: Any, *, required: bool = False) -> None:
-    if value is None and not required:
-        return
-    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        suffix = "" if required else " or None"
-        raise ValueError(f"{name} must be a positive integer{suffix}, got {value!r}.")
 
 
 def _quote(answer: Any) -> str:

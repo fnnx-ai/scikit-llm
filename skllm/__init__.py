@@ -7,6 +7,7 @@ from skllm.classification import (
     ZeroShotClassifier,
 )
 from skllm.config import MissingCredentialError, config_context
+from skllm.text2text import Summarizer, Translator
 from skllm.vectorization import Vectorizer
 
 __version__ = "2.0.0"
@@ -18,6 +19,8 @@ __all__ = [
     "MissingCredentialError",
     "MultiLabelFewShotClassifier",
     "MultiLabelZeroShotClassifier",
+    "Summarizer",
+    "Translator",
     "Vectorizer",
     "ZeroShotClassifier",
     "__version__",

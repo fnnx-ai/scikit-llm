@@ -8,6 +8,7 @@ serialize without leaking connection config.
 
 from __future__ import annotations
 
+import inspect
 import threading
 import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -47,6 +48,7 @@ __all__ = [
     "Requirement",
     "StatelessMixin",
     "as_texts",
+    "check_count",
 ]
 
 DEFAULT_CHAT_MODEL = "openai::gpt-5.6-sol"
@@ -64,6 +66,11 @@ _R = TypeVar("_R")
 #: no lock of their own: it would have to be restored on unpickling, and the
 #: critical section is a handful of integer additions.
 _BOOKKEEPING_LOCK = threading.Lock()
+
+#: Modules whose frames sit between an estimator's public method and the code
+#: that called it: skllm's own, plus the sklearn shim wrapping every
+#: ``transform`` for the set_output API.
+_PASS_THROUGH_MODULES = ("skllm.", "sklearn.utils._set_output")
 
 #: Failures the ``"fill"`` policy must not absorb: they are configuration errors
 #: that every sample of the batch hits identically, so filling them would report
@@ -166,15 +173,7 @@ class BaseLLMEstimator(BaseEstimator):
                 f"Invalid on_error={self.on_error!r}: expected one of "
                 f"{list(ON_ERROR_POLICIES)}."
             )
-        if (
-            isinstance(self.max_concurrency, bool)
-            or not isinstance(self.max_concurrency, int)
-            or self.max_concurrency < 1
-        ):
-            raise ValueError(
-                f"max_concurrency must be a positive integer, got "
-                f"{self.max_concurrency!r}."
-            )
+        check_count("max_concurrency", self.max_concurrency, required=True)
         if self.model_params is not None and not isinstance(self.model_params, Mapping):
             raise TypeError(
                 "model_params must be a mapping of provider request params, got "
@@ -325,9 +324,7 @@ class BaseLLMEstimator(BaseEstimator):
             warnings.warn(
                 f"{type(self).__name__}: {len(errors)} of {len(answers)} samples "
                 "failed and were filled; see the errors_ attribute for the reasons.",
-                # Estimators reach this through one method of their own, so the
-                # fourth frame is the caller's own predict/transform call.
-                stacklevel=4,
+                stacklevel=_caller_stacklevel(),
             )
         return answers
 
@@ -449,6 +446,33 @@ def as_texts(X: Any) -> list[str]:
                 "a string."
             )
     return texts
+
+
+def check_count(name: str, value: Any, *, required: bool = False) -> None:
+    """Validate a count param: a positive integer, or ``None`` when optional."""
+    if value is None and not required:
+        return
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        suffix = "" if required else " or None"
+        raise ValueError(f"{name} must be a positive integer{suffix}, got {value!r}.")
+
+
+def _caller_stacklevel() -> int:
+    """How many frames up the code that ran the batch sits, for a warning.
+
+    A fixed level would point at the wrong file: sklearn wraps every
+    ``transform`` for its set_output API, so a transformer's batch runs one
+    frame deeper than a predictor's.
+    """
+    frame = inspect.currentframe()
+    frame = frame.f_back if frame is not None else None  # the warning's own site
+    level = 1
+    while frame is not None and frame.f_globals.get("__name__", "").startswith(
+        _PASS_THROUGH_MODULES
+    ):
+        frame = frame.f_back
+        level += 1
+    return level
 
 
 def _grouped(outcomes: Sequence[_T], size: int) -> Iterator[Sequence[_T]]:

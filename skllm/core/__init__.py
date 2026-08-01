@@ -10,6 +10,7 @@ from skllm.core.base import (
     Requirement,
     StatelessMixin,
     as_texts,
+    check_count,
 )
 from skllm.core.errors import ON_ERROR_POLICIES, SampleError
 from skllm.core.usage import UsageRecord, UsageReport
@@ -28,4 +29,5 @@ __all__ = [
     "UsageRecord",
     "UsageReport",
     "as_texts",
+    "check_count",
 ]

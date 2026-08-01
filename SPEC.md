@@ -508,9 +508,9 @@ FNNX validates inputs against these schemas at compute time; the FNNX local hand
   - [x] `Vectorizer` in `skllm/vectorization.py` (batching, 2-D float output, all-or-nothing error behavior)
   - [x] `DynamicFewShotClassifier` with per-class sklearn `NearestNeighbors` retrieval, small-class handling, default vectorizer models (`openai::text-embedding-3-small`, `google::gemini-embedding-001`), explicit-vectorizer requirement for all other providers
   - [x] Tests: embedding batching, retrieval composition, default-vectorizer selection, anthropic-without-vectorizer error
-- [ ] Add summarizer and translator
-  - [ ] `Summarizer` (`max_words`, `focus`) and `Translator` (`output_language`) in `skllm/text2text.py` as stateless transformers without `predict` alias
-  - [ ] Tests: outputs, fill-on-failure with empty string, param handling
+- [x] Add summarizer and translator
+  - [x] `Summarizer` (`max_words`, `focus`) and `Translator` (`output_language`) in `skllm/text2text.py` as stateless transformers without `predict` alias
+  - [x] Tests: outputs, fill-on-failure with empty string, param handling
 - [ ] Add NER with inline-tagged output
   - [ ] `NER` in `skllm/tagging.py`: entity schema, tagged-rewrite prompting, strip-tags-equals-input validation with whitespace-tolerant repair, failure → untagged original
   - [ ] HTML rendering utility for tagged text

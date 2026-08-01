@@ -14,6 +14,7 @@ from skllm.core import (
     BaseLLMEstimator,
     StatelessMixin,
     as_texts,
+    check_count,
 )
 
 __all__ = ["DEFAULT_EMBEDDING_MODELS", "Vectorizer"]
@@ -97,11 +98,4 @@ class Vectorizer(TransformerMixin, StatelessMixin, BaseLLMEstimator):
 
     def _check_params(self) -> None:
         super()._check_params()
-        if (
-            isinstance(self.batch_size, bool)
-            or not isinstance(self.batch_size, int)
-            or self.batch_size < 1
-        ):
-            raise ValueError(
-                f"batch_size must be a positive integer, got {self.batch_size!r}."
-            )
+        check_count("batch_size", self.batch_size, required=True)
