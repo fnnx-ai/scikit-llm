@@ -518,9 +518,9 @@ FNNX validates inputs against these schemas at compute time; the FNNX local hand
 - [x] Add structured extractor
   - [x] `StructuredExtractor` in `skllm/extraction.py`: JSON Schema dict or pydantic class input, pydantic→dict schema compilation at the pickling boundary, native structured outputs with salvage fallback, per-sample schema validation
   - [x] Tests: both schema input forms, conforming/non-conforming outputs, pickle round-trip schema normalization
-- [ ] Add rubric scorer and cluster labeler
-  - [ ] `RubricScorer` in `skllm/scoring.py` (scale clamping, NaN fill) and `ClusterLabeler` in `skllm/clustering.py` (`random_state`-controlled exemplar sampling, per-cluster naming calls, `-1`→None, unseen-id error, `fit_transform` override)
-  - [ ] Tests: clamping, NaN policy, naming-call counts, transform mapping, `fit_transform` semantics
+- [x] Add rubric scorer and cluster labeler
+  - [x] `RubricScorer` in `skllm/scoring.py` (scale clamping, NaN fill) and `ClusterLabeler` in `skllm/clustering.py` (`random_state`-controlled exemplar sampling, per-cluster naming calls, `-1`→None, unseen-id error, `fit_transform` override)
+  - [x] Tests: clamping, NaN policy, naming-call counts, transform mapping, `fit_transform` semantics
 - [ ] Add consensus ensemble classifier
   - [ ] `ConsensusClassifier` in `skllm/ensemble.py`: member cloning into `estimators_` at fit, concurrent voting, weights, deterministic tie-break, weighted vote-fraction `predict_proba`, `default_label` fill for no-vote samples
   - [ ] Tests: voting, ties, weighted votes, member-failure behavior, all-members-fail fill, constructor members left unmutated

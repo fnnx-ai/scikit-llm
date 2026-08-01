@@ -6,8 +6,10 @@ from skllm.classification import (
     MultiLabelZeroShotClassifier,
     ZeroShotClassifier,
 )
+from skllm.clustering import ClusterLabeler
 from skllm.config import MissingCredentialError, config_context
 from skllm.extraction import StructuredExtractor
+from skllm.scoring import RubricScorer
 from skllm.tagging import NER
 from skllm.text2text import Summarizer, Translator
 from skllm.vectorization import Vectorizer
@@ -17,11 +19,13 @@ __author__ = "Iryna Kondrashchenko, Oleh Kostromin"
 
 __all__ = [
     "NER",
+    "ClusterLabeler",
     "DynamicFewShotClassifier",
     "FewShotClassifier",
     "MissingCredentialError",
     "MultiLabelFewShotClassifier",
     "MultiLabelZeroShotClassifier",
+    "RubricScorer",
     "StructuredExtractor",
     "Summarizer",
     "Translator",

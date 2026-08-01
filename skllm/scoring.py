@@ -1,1 +1,168 @@
-"""Rubric-based LLM-judge scoring."""
+"""Rubric-based LLM-judge scoring.
+
+The rubric is the whole task definition: the model reads it, reads the sample,
+and answers with the one number the sample earns. What comes back is bounded on
+both ends — a score outside the scale is clamped into it, since a judge saying
+15 out of 10 still means the top of the range — while an answer that is no
+number at all is a sample failure rather than a score nobody can distinguish
+from a real one.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Mapping
+from functools import partial
+from typing import Any, ClassVar
+
+import numpy as np
+from sklearn.base import RegressorMixin
+
+from skllm.backends import BackendError, Message
+from skllm.core import (
+    DEFAULT_CHAT_MODEL,
+    DEFAULT_MAX_CONCURRENCY,
+    BasePromptEstimator,
+    StatelessMixin,
+    as_texts,
+)
+from skllm.prompts import RUBRIC_SCORING
+
+__all__ = ["RubricScorer"]
+
+DEFAULT_SCALE = (0, 10)
+
+#: How much of an unusable answer an error message quotes.
+_QUOTED_ANSWER_CHARS = 200
+
+#: The answer shape the judge is constrained to. The scale itself is not a schema
+#: constraint — numeric bounds are not part of every provider's structured mode,
+#: and clamping covers an out-of-range answer whether they are declared or not.
+_SCORE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"score": {"type": "number"}},
+    "required": ["score"],
+    "additionalProperties": False,
+}
+
+
+class RubricScorer(RegressorMixin, StatelessMixin, BasePromptEstimator):
+    """Score each text against a free-text rubric, on a numeric scale.
+
+    ``rubric`` states what earns which score, in whatever detail the task needs;
+    ``scale`` is the ``(minimum, maximum)`` pair the answers live between,
+    ``(0, 10)`` by default. Scores come back as floats, with ``NaN`` marking the
+    samples the model could not be made to answer for.
+    """
+
+    prompt_placeholders: ClassVar[frozenset[str]] = frozenset(
+        {"rubric", "text", "minimum", "maximum"}
+    )
+    default_prompt_template: ClassVar[str] = RUBRIC_SCORING
+
+    def __init__(
+        self,
+        model: str = DEFAULT_CHAT_MODEL,
+        *,
+        rubric: str | None = None,
+        scale: tuple[float, float] = DEFAULT_SCALE,
+        prompt_template: str | None = None,
+        model_params: Mapping[str, Any] | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        alias: str | None = None,
+        on_error: str = "fill",
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+        verbose: int = 1,
+    ) -> None:
+        super().__init__(
+            model=model,
+            prompt_template=prompt_template,
+            model_params=model_params,
+            api_key=api_key,
+            base_url=base_url,
+            alias=alias,
+            on_error=on_error,
+            max_concurrency=max_concurrency,
+            verbose=verbose,
+        )
+        self.rubric = rubric
+        self.scale = scale
+
+    def predict(self, X: Any) -> np.ndarray:
+        """Score every text, ``NaN`` where the sample failed."""
+        self._check_ready()
+        prompts = [self._prompt(**self._prompt_values(text)) for text in as_texts(X)]
+        scores = self._run_batch(
+            prompts, partial(self._score, bounds=self._bounds()), fill=lambda: math.nan
+        )
+        return np.asarray(scores, dtype=float)
+
+    def _check_params(self) -> None:
+        super()._check_params()
+        self._rubric()
+        self._bounds()
+
+    def _prompt_values(self, text: str) -> dict[str, Any]:
+        minimum, maximum = self._bounds()
+        return {
+            "rubric": self._rubric(),
+            "text": text,
+            "minimum": minimum,
+            "maximum": maximum,
+        }
+
+    def _score(self, prompt: str, *, bounds: tuple[float, float]) -> float:
+        answer = self._structured([Message("user", prompt)], _SCORE_SCHEMA)
+        score = answer.get("score") if isinstance(answer, Mapping) else None
+        if (
+            isinstance(score, bool)
+            or not isinstance(score, (int, float))
+            or not math.isfinite(score)
+        ):
+            raise BackendError(
+                f"The model answered without a numeric 'score': {_quote(answer)}."
+            )
+        minimum, maximum = bounds
+        return min(max(float(score), minimum), maximum)
+
+    def _rubric(self) -> str:
+        """The validated criteria the judge scores against."""
+        rubric = self.rubric
+        if not isinstance(rubric, str) or not rubric.strip():
+            raise ValueError(
+                "rubric must state what the score measures, e.g. 'How clearly the "
+                "review explains the problem it reports: 0 not at all, 10 "
+                "exhaustively.'"
+            )
+        return rubric
+
+    def _bounds(self) -> tuple[float, float]:
+        """The validated ``(minimum, maximum)`` every score is clamped into."""
+        scale = self.scale
+        if not isinstance(scale, (tuple, list)) or len(scale) != 2:
+            raise TypeError(
+                "scale must be a (minimum, maximum) pair of numbers, e.g. (0, 10), "
+                f"got {scale!r}."
+            )
+        minimum, maximum = (_as_bound(value) for value in scale)
+        if minimum >= maximum:
+            raise ValueError(
+                f"The scale minimum {minimum:g} must lie below its maximum {maximum:g}."
+            )
+        return minimum, maximum
+
+
+def _as_bound(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(
+            "scale must be a (minimum, maximum) pair of numbers, e.g. (0, 10), but "
+            f"one end is a {type(value).__name__}."
+        )
+    if not math.isfinite(value):
+        raise ValueError(f"Every end of the scale must be finite, got {value!r}.")
+    return float(value)
+
+
+def _quote(answer: Any) -> str:
+    return repr(str(answer)[:_QUOTED_ANSWER_CHARS])
