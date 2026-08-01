@@ -7,6 +7,7 @@ from skllm.classification import (
     ZeroShotClassifier,
 )
 from skllm.config import MissingCredentialError, config_context
+from skllm.extraction import StructuredExtractor
 from skllm.tagging import NER
 from skllm.text2text import Summarizer, Translator
 from skllm.vectorization import Vectorizer
@@ -21,6 +22,7 @@ __all__ = [
     "MissingCredentialError",
     "MultiLabelFewShotClassifier",
     "MultiLabelZeroShotClassifier",
+    "StructuredExtractor",
     "Summarizer",
     "Translator",
     "Vectorizer",

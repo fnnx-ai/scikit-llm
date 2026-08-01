@@ -34,6 +34,7 @@ from skllm.backends.base import (
     named_unsupported_param,
     parse_json,
     request_args,
+    strict_dialect,
 )
 
 if TYPE_CHECKING:
@@ -105,7 +106,7 @@ class OpenAIBackend(BaseBackend):
                 "json_schema": {
                     "name": "response",
                     "schema": dict(schema),
-                    "strict": True,
+                    "strict": strict_dialect(schema),
                 },
             },
             **request_args(params, _CHAT_ARGS),

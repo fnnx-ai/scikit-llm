@@ -2764,6 +2764,7 @@ litellm = [
 dev = [
     { name = "mypy" },
     { name = "opentelemetry-sdk" },
+    { name = "pydantic" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -2786,6 +2787,7 @@ provides-extras = ["anthropic", "google", "litellm", "all"]
 dev = [
     { name = "mypy", specifier = ">=1.11" },
     { name = "opentelemetry-sdk", specifier = ">=1.20" },
+    { name = "pydantic", specifier = ">=2" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.6" },
 ]

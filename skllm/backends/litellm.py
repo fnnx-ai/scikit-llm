@@ -20,6 +20,7 @@ from skllm.backends.base import (
     missing_extra,
     named_unsupported_param,
     parse_json,
+    strict_dialect,
 )
 
 # Only a genuinely absent package becomes the install hint: a name that a newer
@@ -81,7 +82,7 @@ class LiteLLMBackend(BaseBackend):
                     "json_schema": {
                         "name": "response",
                         "schema": dict(schema),
-                        "strict": True,
+                        "strict": strict_dialect(schema),
                     },
                 },
                 **params,

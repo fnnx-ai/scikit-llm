@@ -16,10 +16,13 @@ from skllm.config import config_context
 
 MODEL = "vertex_ai/gemini-2.5-pro"
 PROMPT = [Message("system", "classify"), Message("user", "I love it")]
+# Closed, as every schema skllm builds for a task is: that is what lets a
+# request claim strict mode.
 LABEL_SCHEMA = {
     "type": "object",
     "properties": {"label": {"enum": ["positive", "negative"]}},
     "required": ["label"],
+    "additionalProperties": False,
 }
 
 
@@ -179,6 +182,18 @@ def test_structured_calls_use_native_schemas_where_litellm_reports_support(
         {"role": "user", "content": "I love it"},
     ]
     assert response.content == {"label": "positive"}
+
+
+def test_native_schemas_claim_strict_only_when_closed(
+    stub: StubLiteLLM, schema_support: Any
+) -> None:
+    schema_support(True)
+    schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+    stub.fallback = completion('{"name": "Ada Lovelace"}')
+
+    LiteLLMBackend().structured(MODEL, PROMPT, schema)
+
+    assert stub.requests[0]["response_format"]["json_schema"]["strict"] is False
 
 
 def test_structured_calls_fall_back_to_a_prompt_embedded_schema(

@@ -37,7 +37,9 @@ all = ["scikit-llm[anthropic,google,litellm]"]
 [dependency-groups]
 # The opentelemetry SDK is a test-only dependency: it exercises the optional
 # span emission, which the library itself never imports as a hard requirement.
-dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11", "opentelemetry-sdk>=1.20"]
+# pydantic is one for the same reason: extraction schemas may be model classes,
+# which the library only ever duck-types.
+dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11", "opentelemetry-sdk>=1.20", "pydantic>=2"]
 
 [tool.setuptools.dynamic]
 version = { attr = "skllm.__version__" }

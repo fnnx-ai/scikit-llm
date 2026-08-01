@@ -48,6 +48,7 @@ __all__ = [
     "named_unsupported_param",
     "parse_json",
     "request_args",
+    "strict_dialect",
 ]
 
 INITIAL_BACKOFF = 0.5
@@ -465,6 +466,29 @@ def request_args(params: Mapping[str, Any], accepted: frozenset[str]) -> dict[st
     if unnamed:
         args["extra_body"] = {**args.get("extra_body", {}), **unnamed}
     return args
+
+
+def strict_dialect(schema: Any) -> bool:
+    """Whether every object in a schema is closed: no extra properties, none optional.
+
+    Strict mode grammar-constrains the answer, but only accepts schemas in that
+    closed subset — a request claiming strict for any other schema is rejected
+    outright, before the model ever sees it. skllm builds its own task schemas
+    that way; a user's extraction schema need not (a pydantic model compiles to
+    neither marker), so the flag is asked for only where it holds. The same
+    schema still travels with the request either way, and the estimator
+    validates the answer against it regardless.
+    """
+    if isinstance(schema, (list, tuple)):
+        return all(strict_dialect(item) for item in schema)
+    if not isinstance(schema, Mapping):
+        return True
+    if "properties" in schema or schema.get("type") == "object":
+        if schema.get("additionalProperties") is not False:
+            return False
+        if set(schema.get("required") or ()) != set(schema.get("properties") or ()):
+            return False
+    return all(strict_dialect(value) for value in schema.values())
 
 
 def parse_json(text: str) -> Any:

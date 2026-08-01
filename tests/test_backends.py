@@ -23,7 +23,7 @@ from skllm.backends import (
     register_backend,
     registry,
 )
-from skllm.backends.base import INITIAL_BACKOFF, MAX_BACKOFF
+from skllm.backends.base import INITIAL_BACKOFF, MAX_BACKOFF, strict_dialect
 from skllm.backends.openai import OllamaBackend, OpenAIBackend
 from skllm.config import MissingCredentialError, config_context
 from tests.fakes import FakeBackend, FakeCall, FakeTransientError
@@ -463,6 +463,58 @@ def test_json_salvage(text: str, expected: Any) -> None:
 def test_unsalvageable_json_raises(text: str) -> None:
     with pytest.raises(BackendError, match="not valid JSON"):
         parse_json(text)
+
+
+CLOSED_SCHEMA = {
+    "type": "object",
+    "properties": {"label": {"enum": ["a", "b"]}},
+    "required": ["label"],
+    "additionalProperties": False,
+}
+
+
+@pytest.mark.parametrize(
+    ("schema", "closed"),
+    [
+        (CLOSED_SCHEMA, True),
+        ({**CLOSED_SCHEMA, "additionalProperties": True}, False),
+        # An optional property: strict mode has no way to express one.
+        ({**CLOSED_SCHEMA, "required": []}, False),
+        # A nested object left open, which strict mode rejects just as loudly.
+        (
+            {
+                **CLOSED_SCHEMA,
+                "properties": {"label": {"type": "object", "properties": {}}},
+            },
+            False,
+        ),
+        # Where the nesting lives makes no difference: $defs, arrays, unions.
+        ({"$defs": {"open": {"type": "object"}}, **CLOSED_SCHEMA}, False),
+        (
+            {
+                "type": "object",
+                "properties": {"items": {"type": "array", "items": CLOSED_SCHEMA}},
+                "required": ["items"],
+                "additionalProperties": False,
+            },
+            True,
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {"x": {"anyOf": [{"type": "object"}, {"type": "null"}]}},
+                "required": ["x"],
+                "additionalProperties": False,
+            },
+            False,
+        ),
+        ({"type": "string"}, True),
+    ],
+)
+def test_strict_dialect_recognizes_fully_closed_schemas(
+    schema: Mapping[str, Any], closed: bool
+) -> None:
+    assert strict_dialect(schema) is closed
 
 
 def test_concurrent_calls_share_one_adapter(fake_backend: FakeBackend) -> None:

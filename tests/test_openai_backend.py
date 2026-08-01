@@ -200,6 +200,26 @@ def test_structured_calls_use_native_json_schema(
     assert response.content == {"label": "positive"}
 
 
+def test_structured_calls_claim_strict_only_for_closed_schemas(
+    stub: StubOpenAI, api_key: str
+) -> None:
+    """A user's extraction schema is rarely closed, and strict rejects the rest.
+
+    Claiming it anyway would fail the request before the model saw the schema,
+    so the schema still travels — just without the grammar constraint.
+    """
+    schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+    stub.fallback = completion('{"name": "Ada Lovelace"}')
+
+    response = OpenAIBackend().structured("gpt-5", PROMPT, schema)
+
+    assert stub.requests[0]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "response", "schema": schema, "strict": False},
+    }
+    assert response.content == {"name": "Ada Lovelace"}
+
+
 def test_embeddings_keep_the_input_order(stub: StubOpenAI, api_key: str) -> None:
     stub.fallback = embeddings([1.0, 0.0], [0.0, 1.0])
 
