@@ -11,6 +11,7 @@ from skllm.config import MissingCredentialError, config_context
 from skllm.ensemble import ConsensusClassifier
 from skllm.extraction import StructuredExtractor
 from skllm.scoring import RubricScorer
+from skllm.serialization import save
 from skllm.tagging import NER
 from skllm.text2text import Summarizer, Translator
 from skllm.vectorization import Vectorizer
@@ -36,4 +37,5 @@ __all__ = [
     "__version__",
     "config_context",
     "register_backend",
+    "save",
 ]

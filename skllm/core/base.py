@@ -43,6 +43,9 @@ __all__ = [
     "DEFAULT_CHAT_MODEL",
     "DEFAULT_EMBEDDING_MODEL",
     "DEFAULT_MAX_CONCURRENCY",
+    "STATE_ATTRIBUTES_KEY",
+    "STATE_VERSION",
+    "STATE_VERSION_KEY",
     "BaseLLMEstimator",
     "BasePromptEstimator",
     "Requirement",
@@ -58,6 +61,14 @@ DEFAULT_MAX_CONCURRENCY = 8
 #: Params saying where and as whom the model runs; excluded from every
 #: serialized form and re-supplied through the config layers at call time.
 CONNECTION_PARAMS = ("api_key", "base_url")
+
+#: Layout of an estimator's pickled state. It travels as a versioned envelope
+#: rather than a raw ``__dict__`` so that compatibility across skllm versions is
+#: a deliberate, migratable contract: a reader knows what it is looking at and
+#: refuses a layout written by a newer library instead of half-restoring it.
+STATE_VERSION = 1
+STATE_VERSION_KEY = "skllm_state_version"
+STATE_ATTRIBUTES_KEY = "attributes"
 
 _T = TypeVar("_T")
 _R = TypeVar("_R")
@@ -131,17 +142,32 @@ class BaseLLMEstimator(BaseEstimator):
         """The samples the most recent operation could not answer."""
         return getattr(self, "_errors", ())
 
-    def llm_requirements(self) -> tuple[Requirement, ...]:
-        """Every provider/alias pair this estimator needs a credential for to serve.
+    def llm_components(self) -> tuple[BaseLLMEstimator, ...]:
+        """This estimator and every skllm estimator nested inside it.
 
         Covers skllm-native nesting — components supplied as params and those
         built during ``fit`` alike — so callers walking foreign structures (a
         pipeline, a wrapper) never need to know skllm's internals.
         """
-        found = list(self._own_requirements())
+        found = [self]
         for component in self._nested_estimators():
-            found.extend(component.llm_requirements())
+            found.extend(component.llm_components())
+        return tuple(found)
+
+    def llm_requirements(self) -> tuple[Requirement, ...]:
+        """Every provider/alias pair this estimator needs a credential for to serve."""
+        found = [
+            requirement
+            for component in self.llm_components()
+            for requirement in component._own_requirements()
+        ]
         return tuple(dict.fromkeys(found))
+
+    def save(self, path: str) -> None:
+        """Write this fitted estimator to an FNNX bundle; see :func:`skllm.save`."""
+        from skllm.serialization import save as save_bundle
+
+        save_bundle(self, path)
 
     def __sklearn_tags__(self) -> Tags:
         tags = super().__sklearn_tags__()
@@ -151,7 +177,16 @@ class BaseLLMEstimator(BaseEstimator):
         return tags
 
     def __getstate__(self) -> dict[str, Any]:
-        """Drop connection config, so not even a raw pickle carries credentials."""
+        return {
+            STATE_VERSION_KEY: STATE_VERSION,
+            STATE_ATTRIBUTES_KEY: self._state_attributes(),
+        }
+
+    def __setstate__(self, state: Mapping[str, Any]) -> None:
+        self.__dict__.update(_read_state(state))
+
+    def _state_attributes(self) -> dict[str, Any]:
+        """What survives pickling: everything but connection config."""
         state = dict(super().__getstate__())
         return {**state, **{name: None for name in CONNECTION_PARAMS if name in state}}
 
@@ -463,6 +498,23 @@ def check_count(name: str, value: Any, *, required: bool = False) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         suffix = "" if required else " or None"
         raise ValueError(f"{name} must be a positive integer{suffix}, got {value!r}.")
+
+
+def _read_state(state: Mapping[str, Any]) -> dict[str, Any]:
+    """Unwrap a state envelope, refusing a layout this version cannot read."""
+    if not isinstance(state, Mapping) or STATE_VERSION_KEY not in state:
+        raise ValueError(
+            "Unrecognized scikit-llm estimator state: expected a versioned state "
+            f"dict carrying {STATE_VERSION_KEY!r}."
+        )
+    version = state[STATE_VERSION_KEY]
+    if version > STATE_VERSION:
+        raise ValueError(
+            f"This scikit-llm reads estimator state up to version {STATE_VERSION}, "
+            f"but the payload declares version {version}; install a newer "
+            "scikit-llm to read it."
+        )
+    return dict(state[STATE_ATTRIBUTES_KEY])
 
 
 def _caller_stacklevel() -> int:

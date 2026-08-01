@@ -84,13 +84,13 @@ class StructuredExtractor(TransformerMixin, StatelessMixin, BasePromptEstimator)
         )
         return records
 
-    def __getstate__(self) -> dict[str, Any]:
+    def _state_attributes(self) -> dict[str, Any]:
         """Compile a pydantic model class to its schema on the way out.
 
         What a pickle — and what a bundle — carries is the dict form alone, so
         restoring never imports the user's model class or pydantic itself.
         """
-        state = super().__getstate__()
+        state = super()._state_attributes()
         return {**state, "schema": _as_json_schema(state["schema"])}
 
     def _check_params(self) -> None:

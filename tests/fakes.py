@@ -133,6 +133,31 @@ class FakeBackend(BaseBackend):
         return call
 
 
+class OpenAIFake(FakeBackend):
+    """The fake wearing a real provider's identity.
+
+    Registering the plain fake under a provider prefix is enough for anything
+    derived from the model string, but not for what scikit-llm derives from the
+    *adapter*: which config namespace its credentials resolve in and which
+    environment variable a bundle declares for it.
+    """
+
+    provider: ClassVar[str] = "openai"
+    credential_env_var: ClassVar[str | None] = "OPENAI_API_KEY"
+
+
+class AnthropicFake(FakeBackend):
+    provider: ClassVar[str] = "anthropic"
+    credential_env_var: ClassVar[str | None] = "ANTHROPIC_API_KEY"
+
+
+class OllamaFake(FakeBackend):
+    """A keyless provider, as the Ollama profile is."""
+
+    provider: ClassVar[str] = "ollama"
+    credential_env_var: ClassVar[str | None] = None
+
+
 def _next(script: Script, call: FakeCall) -> Any:
     """Resolve one scripted answer, raising it when it is an exception."""
     if callable(script):
