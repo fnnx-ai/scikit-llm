@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -16,13 +16,13 @@ repos:
       - id: detect-private-key
   # Formatter for Json and Yaml files
   - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.0.0-alpha.9-for-vscode
+    rev: v4.0.0-alpha.8
     hooks:
       - id: prettier
         types: [json, yaml, toml]
   # Formatter for markdown files
   - repo: https://github.com/executablebooks/mdformat
-    rev: 0.7.16
+    rev: 1.0.0
     hooks:
       - id: mdformat
         args: ["--number"]
@@ -34,24 +34,24 @@ repos:
           - mdformat-shfmt
   # An extremely fast Python linter, written in Rust
   - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: "v0.0.263"
+    rev: "v0.16.5"
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
   # Python code formatter
   - repo: https://github.com/psf/black
-    rev: 23.3.0
+    rev: 26.5.1
     hooks:
       - id: black
         args: ["--config", "pyproject.toml"]
   # Python's import formatter
   - repo: https://github.com/PyCQA/isort
-    rev: 5.12.0
+    rev: 9.0.1
     hooks:
       - id: isort
   # Formats docstrings to follow PEP 257
   - repo: https://github.com/PyCQA/docformatter
-    rev: v1.6.4
+    rev: v1.7.8
     hooks:
       - id: docformatter
         additional_dependencies: [tomli]
