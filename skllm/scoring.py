@@ -6,6 +6,9 @@ both ends — a score outside the scale is clamped into it, since a judge saying
 15 out of 10 still means the top of the range — while an answer that is no
 number at all is a sample failure rather than a score nobody can distinguish
 from a real one.
+
+A System One model rates on discrete levels instead: every whole number of the
+scale becomes one, and its probability-weighted level is the score.
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ from typing import Any, ClassVar
 import numpy as np
 from sklearn.base import RegressorMixin
 
-from skllm.backends import BackendError, Message
+from skllm.backends import BackendError, Message, SystemOneBackend
 from skllm.core import (
     DEFAULT_CHAT_MODEL,
     DEFAULT_MAX_CONCURRENCY,
@@ -26,7 +29,7 @@ from skllm.core import (
     StatelessMixin,
     as_texts,
 )
-from skllm.prompts import RUBRIC_SCORING
+from skllm.prompts import RUBRIC_QUESTION, RUBRIC_SCORING
 
 __all__ = ["RubricScorer"]
 
@@ -34,6 +37,9 @@ DEFAULT_SCALE = (0, 10)
 
 #: How much of an unusable answer an error message quotes.
 _QUOTED_ANSWER_CHARS = 200
+
+#: The id the scorer asks its one System One question under.
+_SCORE_ID = "score"
 
 #: The answer shape the judge is constrained to. The scale itself is not a schema
 #: constraint — numeric bounds are not part of every provider's structured mode,
@@ -53,7 +59,12 @@ class RubricScorer(RegressorMixin, StatelessMixin, BasePromptEstimator):
     ``scale`` is the ``(minimum, maximum)`` pair the answers live between,
     ``(0, 10)`` by default. Scores come back as floats, with ``NaN`` marking the
     samples the model could not be made to answer for.
+
+    A System One model needs a scale of whole numbers with no more steps than
+    it has levels, e.g. ``(1, 10)``.
     """
+
+    _system_one_capable: ClassVar[bool] = True
 
     prompt_placeholders: ClassVar[frozenset[str]] = frozenset(
         {"rubric", "text", "minimum", "maximum"}
@@ -92,16 +103,30 @@ class RubricScorer(RegressorMixin, StatelessMixin, BasePromptEstimator):
     def predict(self, X: Any) -> np.ndarray:
         """Score every text, ``NaN`` where the sample failed."""
         self._check_ready()
-        prompts = [self._prompt(**self._prompt_values(text)) for text in as_texts(X)]
-        scores = self._run_batch(
-            prompts, partial(self._score, bounds=self._bounds()), fill=lambda: math.nan
-        )
+        texts = as_texts(X)
+        system_one = self._system_one()
+        if system_one is None:
+            prompts = [self._prompt(**self._prompt_values(text)) for text in texts]
+            scores = self._run_batch(
+                prompts,
+                partial(self._score, bounds=self._bounds()),
+                fill=lambda: math.nan,
+            )
+        else:
+            scores = self._run_batch(
+                texts,
+                partial(self._rate, levels=self._levels(system_one)),
+                fill=lambda: math.nan,
+            )
         return np.asarray(scores, dtype=float)
 
     def _check_params(self) -> None:
         super()._check_params()
         self._rubric()
         self._bounds()
+        system_one = self._system_one()
+        if system_one is not None:
+            self._levels(system_one)
 
     def _prompt_values(self, text: str) -> dict[str, Any]:
         minimum, maximum = self._bounds()
@@ -125,6 +150,43 @@ class RubricScorer(RegressorMixin, StatelessMixin, BasePromptEstimator):
             )
         minimum, maximum = bounds
         return min(max(float(score), minimum), maximum)
+
+    def _rate(self, text: str, *, levels: list[float]) -> float:
+        """Score a text on a System One model's discrete levels."""
+        question = {
+            "type": "score",
+            "instructions": {"rubric": self._rubric(), "question": RUBRIC_QUESTION},
+            "criteria": [f"{level:g}" for level in levels],
+        }
+        answer = self._evaluate(text, {_SCORE_ID: question}).get(_SCORE_ID)
+        level = answer.get("score") if isinstance(answer, Mapping) else None
+        if (
+            isinstance(level, bool)
+            or not isinstance(level, (int, float))
+            or not math.isfinite(level)
+        ):
+            raise BackendError(
+                f"The model answered without a numeric 'score': {_quote(answer)}."
+            )
+        # The answer is the expected level index; levels are one apart.
+        return min(max(levels[0] + float(level), levels[0]), levels[-1])
+
+    def _levels(self, backend: SystemOneBackend) -> list[float]:
+        """Every whole number of the scale, one System One level each."""
+        minimum, maximum = self._bounds()
+        steps = maximum - minimum
+        if (
+            not minimum.is_integer()
+            or not maximum.is_integer()
+            or steps + 1 > backend.max_score_levels
+        ):
+            raise ValueError(
+                f"{self.model!r} is a System One model, which rates on at most "
+                f"{backend.max_score_levels} levels, so the scale must be a pair "
+                f"of whole numbers at most {backend.max_score_levels - 1} apart, "
+                f"e.g. (1, {backend.max_score_levels}); got {self.scale!r}."
+            )
+        return [minimum + step for step in range(int(steps) + 1)]
 
     def _rubric(self) -> str:
         """The validated criteria the judge scores against."""

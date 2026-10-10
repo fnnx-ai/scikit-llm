@@ -2,9 +2,9 @@
 
 Every bundle uses this exact class as its pyfunc entry point; what varies per
 model is driven by ``extra_values["skllm"]`` written at save time. The module is
-copied verbatim into the bundle, so it imports only the FNNX PyFunc base at the
-top level — scikit-llm itself, joblib and numpy are reached inside the methods,
-which run in the serving environment.
+copied verbatim into the bundle, so it imports only FNNX at the top level —
+scikit-llm itself, joblib and numpy are reached inside the methods, which run
+in the serving environment.
 
 The wrapper owns the dynamic-attribute contract, because the pyfunc variant
 passes attributes through unvalidated and manifest ``Var``s carry no defaults:
@@ -20,6 +20,7 @@ import math
 import sys
 from typing import Any
 
+from fnnx.utils import to_thread
 from fnnx.variants.pyfunc import PyFunc
 
 #: Where the save side records everything this wrapper needs to know.
@@ -46,7 +47,7 @@ class SkllmModel(PyFunc):
             )
         self._config = config
         self._model = joblib.load(state_path)
-        self._declared = frozenset(
+        self._declared: frozenset[str] = frozenset(
             {
                 OVERRIDES_ATTRIBUTE,
                 *(entry["attribute"] for entry in config.get("credentials", [])),
@@ -65,10 +66,12 @@ class SkllmModel(PyFunc):
         return {OUTPUT_CHANNEL: _jsonable(answer)}
 
     async def compute_async(self, inputs: dict, dynamic_attributes: dict) -> dict:
-        """Run the batch off the event loop, so concurrent calls overlap."""
-        import asyncio
-
-        return await asyncio.to_thread(self.compute, inputs, dynamic_attributes)
+        """Run the batch on the runtime's worker pool, so concurrent calls overlap
+        while respecting the handler's configured concurrency."""
+        answer: dict = await to_thread(
+            self.fnnx_context.executor, self.compute, inputs, dynamic_attributes
+        )
+        return answer
 
     def _checked(self, dynamic_attributes: dict | None) -> dict:
         """Reject what the bundle never declared, which FNNX would silently ignore."""

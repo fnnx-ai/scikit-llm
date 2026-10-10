@@ -15,6 +15,7 @@ OPTIONAL_BACKENDS = [
     ("anthropic", "anthropic", "anthropic"),
     ("google", "google.genai", "google"),
     ("litellm", "litellm", "litellm"),
+    ("typesafe", "typesafe_sdk", "typesafe"),
 ]
 
 
@@ -47,7 +48,11 @@ def test_an_installed_extra_yields_a_usable_adapter(
 # such name each — an SDK version that dropped it must not read as "not installed".
 @pytest.mark.parametrize(
     ("provider", "package", "dropped"),
-    [("anthropic", "anthropic", "Anthropic"), ("google", "google.genai", "Client")],
+    [
+        ("anthropic", "anthropic", "Anthropic"),
+        ("google", "google.genai", "Client"),
+        ("typesafe", "typesafe_sdk", "TypeSafeClient"),
+    ],
 )
 def test_an_sdk_that_dropped_a_name_is_not_reported_as_a_missing_extra(
     monkeypatch: pytest.MonkeyPatch, provider: str, package: str, dropped: str

@@ -24,6 +24,7 @@ from skllm.backends import (
     Message,
     ModelRef,
     Response,
+    SystemOneBackend,
     get_backend,
     parse_model,
 )
@@ -110,6 +111,10 @@ class BaseLLMEstimator(BaseEstimator):
     #: models consume — embeddings, cluster names — so that a filled sample
     #: would silently poison everything downstream instead of showing up.
     _all_or_nothing: ClassVar[bool] = False
+    #: Whether the task can be phrased as typed questions for a System One
+    #: model. Those models generate no text, so every other estimator refuses
+    #: them up front rather than failing each sample on its own.
+    _system_one_capable: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -209,7 +214,12 @@ class BaseLLMEstimator(BaseEstimator):
                 "model_params must be a mapping of provider request params, got "
                 f"{type(self.model_params).__name__}."
             )
-        self._backend()
+        if self._system_one() is not None and not self._system_one_capable:
+            raise ValueError(
+                f"{type(self).__name__} needs a model that generates text, but "
+                f"{self.model!r} is a System One model, which only answers typed "
+                "questions. Use it with the classifiers or RubricScorer."
+            )
 
     def _check_batch_params(self) -> None:
         """Validate how a batch is run, which even a model-less ensemble does."""
@@ -228,6 +238,11 @@ class BaseLLMEstimator(BaseEstimator):
     def _backend(self) -> tuple[Backend, ModelRef]:
         ref = parse_model(self.model)
         return get_backend(ref.provider), ref
+
+    def _system_one(self) -> SystemOneBackend | None:
+        """The model's backend when it serves a System One model, else ``None``."""
+        backend, _ = self._backend()
+        return backend if isinstance(backend, SystemOneBackend) else None
 
     def _connection(self) -> Connection:
         return Connection(
@@ -281,6 +296,26 @@ class BaseLLMEstimator(BaseEstimator):
             lambda: backend.embed(
                 ref.model_id,
                 texts,
+                params=self._request_params(),
+                connection=self._connection(),
+            ),
+        )
+
+    def _evaluate(
+        self, state: Any, questions: Mapping[str, Mapping[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        """Ask a System One model typed questions about ``state``."""
+        backend = self._system_one()
+        if backend is None:
+            raise TypeError(f"{self.model!r} is not served by a System One backend.")
+        ref = parse_model(self.model)
+        return self._issue(
+            "evaluate",
+            ref,
+            lambda: backend.evaluate(
+                ref.model_id,
+                state,
+                questions,
                 params=self._request_params(),
                 connection=self._connection(),
             ),
@@ -431,8 +466,15 @@ class BasePromptEstimator(BaseLLMEstimator):
 
     def _check_params(self) -> None:
         super()._check_params()
-        if self.prompt_template is not None:
-            self._check_prompt_template(self.prompt_template)
+        if self.prompt_template is None:
+            return
+        if self._system_one() is not None:
+            raise ValueError(
+                f"{self.model!r} is a System One model, which is asked typed "
+                "questions rather than prompted, so prompt_template has no effect "
+                "on it. Leave prompt_template unset."
+            )
+        self._check_prompt_template(self.prompt_template)
 
     def _prompt(self, **values: Any) -> str:
         return (self.prompt_template or self.default_prompt_template).format(**values)

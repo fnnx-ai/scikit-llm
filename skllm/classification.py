@@ -2,7 +2,9 @@
 
 Labels are obtained through structured outputs constrained to ``classes_``, so a
 prediction is either one of the fitted labels or a reported sample failure —
-never an unconstrained string.
+never an unconstrained string. A System One model is asked typed questions
+instead — a choice among the classes, or a yes/no per class — and its
+probabilities back ``predict_proba`` directly.
 """
 
 from __future__ import annotations
@@ -26,8 +28,10 @@ from skllm.core import (
     check_count,
 )
 from skllm.prompts import (
+    CATEGORY_QUESTION,
     FEW_SHOT_MULTI_LABEL,
     FEW_SHOT_SINGLE_LABEL,
+    MEMBERSHIP_QUESTION,
     ZERO_SHOT_MULTI_LABEL,
     ZERO_SHOT_SINGLE_LABEL,
     render_examples,
@@ -49,6 +53,9 @@ __all__ = [
 #: How much of an unusable answer an error message quotes.
 _QUOTED_ANSWER_CHARS = 200
 
+#: The id a single-label classifier asks its one System One question under.
+_CATEGORY_ID = "category"
+
 
 class _BaseClassifier(ClassifierMixin, BasePromptEstimator):
     """What every classifier shares: fitting labels, voting and aggregation.
@@ -56,6 +63,8 @@ class _BaseClassifier(ClassifierMixin, BasePromptEstimator):
     One call per sample answers a fitted classifier; ``n_predictors`` turns that
     into k sampled calls whose votes are aggregated, at k times the cost.
     """
+
+    _system_one_capable: ClassVar[bool] = True
 
     def __init__(
         self,
@@ -92,22 +101,39 @@ class _BaseClassifier(ClassifierMixin, BasePromptEstimator):
         # a fit that fails halfway would otherwise leave the estimator looking
         # fitted to check_is_fitted while missing the classes predict needs.
         classes = _distinct(rows)
+        self._check_classes(classes)
         self._fit_examples(X, rows)
         self.classes_ = classes
         return self
 
     def predict_proba(self, X: Any) -> np.ndarray:
-        """Per-class vote fractions, aligned with ``classes_``.
+        """Per-class probabilities, aligned with ``classes_``.
 
-        Degenerate without ``n_predictors``: the single deterministic answer is
-        the only vote, so its row is one-hot (per-class 0/1 for multi-label).
+        For a System One model these are the model's own calibrated
+        probabilities. Otherwise they are vote fractions, degenerate without
+        ``n_predictors``: the single deterministic answer is the only vote, so
+        its row is one-hot (per-class 0/1 for multi-label). A failed sample's
+        row is all zeros.
         """
-        rows = [self._frequencies(votes) for votes in self._collect_votes(X)]
+        self._check_ready()
+        if self._system_one() is None:
+            rows = [self._frequencies(votes) for votes in self._collect_votes(X)]
+        else:
+            rows = [
+                [0.0] * len(self.classes_) if row is None else row
+                for row in self._collect_probabilities(X)
+            ]
         return np.asarray(rows, dtype=float).reshape(len(rows), len(self.classes_))
 
     def _check_params(self) -> None:
         super()._check_params()
         check_count("n_predictors", self.n_predictors)
+        if self.n_predictors is not None and self._system_one() is not None:
+            raise ValueError(
+                f"n_predictors samples votes to estimate probabilities, but "
+                f"{self.model!r} is a System One model, which returns calibrated "
+                "probabilities from a single call. Leave n_predictors unset."
+            )
         if self._repeats() > 1 and self._request_params().get("temperature") == 0:
             raise ValueError(
                 f"n_predictors={self.n_predictors} samples that many answers per "
@@ -122,7 +148,6 @@ class _BaseClassifier(ClassifierMixin, BasePromptEstimator):
 
     def _collect_votes(self, X: Any) -> list[list[tuple[str, ...]]]:
         """The successful votes per sample, empty where every call failed."""
-        self._check_ready()
         repeats = self._repeats()
         return self._run_repeated(
             self._prompts(as_texts(X)),
@@ -140,6 +165,22 @@ class _BaseClassifier(ClassifierMixin, BasePromptEstimator):
         """
         return [self._prompt(**self._prompt_values(text)) for text in texts]
 
+    def _collect_probabilities(self, X: Any) -> list[list[float] | None]:
+        """A System One model's per-class probabilities, ``None`` where it failed."""
+        texts = as_texts(X)
+        requests = [
+            (text, self._questions(examples))
+            for text, examples in zip(texts, self._demonstrations(texts), strict=True)
+        ]
+        return self._run_batch(
+            requests, lambda request: self._probabilities(*request), fill=lambda: None
+        )
+
+    def _probabilities(
+        self, text: str, questions: Mapping[str, Mapping[str, Any]]
+    ) -> list[float]:
+        return self._read_probabilities(self._evaluate(text, questions))
+
     def _vote(self, prompt: str, *, deterministic: bool) -> tuple[str, ...]:
         answer = self._structured(
             [Message("user", prompt)], self._schema(), deterministic=deterministic
@@ -156,6 +197,13 @@ class _BaseClassifier(ClassifierMixin, BasePromptEstimator):
     def _fit_examples(self, X: Any, rows: Sequence[Any]) -> None:
         """Zero-shot classifiers ignore X, which may be ``None``."""
 
+    def _demonstrations(self, texts: Sequence[str]) -> list[Sequence[tuple[str, Any]]]:
+        """Which examples to demonstrate the task with, per sample."""
+        return [()] * len(texts)
+
+    def _check_classes(self, classes: Sequence[str]) -> None:
+        """Reject a label set the model cannot be asked about, before fitting."""
+
     def _check_targets(self, y: Any) -> list[Any]:
         """Validate y and return its labels row by row."""
         raise NotImplementedError
@@ -164,6 +212,16 @@ class _BaseClassifier(ClassifierMixin, BasePromptEstimator):
         raise NotImplementedError
 
     def _parse(self, answer: Any) -> tuple[str, ...]:
+        raise NotImplementedError
+
+    def _questions(
+        self, examples: Sequence[tuple[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        """The System One questions whose answers decide one sample."""
+        raise NotImplementedError
+
+    def _read_probabilities(self, answers: Mapping[str, Any]) -> list[float]:
+        """Per-class probabilities, aligned with ``classes_``, from the answers."""
         raise NotImplementedError
 
 
@@ -200,10 +258,18 @@ class _SingleLabelClassifier(_BaseClassifier):
         self.default_label = default_label
 
     def predict(self, X: Any) -> np.ndarray:
-        """The majority label per sample, or ``default_label`` where none arrived."""
-        return np.asarray(
-            [self._decide(votes) for votes in self._collect_votes(X)], dtype=object
-        )
+        """The winning label per sample, or ``default_label`` where none arrived.
+
+        The majority vote, or a System One model's most probable class.
+        """
+        self._check_ready()
+        if self._system_one() is None:
+            labels = [self._decide(votes) for votes in self._collect_votes(X)]
+        else:
+            labels = [
+                self._most_probable(row) for row in self._collect_probabilities(X)
+            ]
+        return np.asarray(labels, dtype=object)
 
     def _check_params(self) -> None:
         super()._check_params()
@@ -220,6 +286,20 @@ class _SingleLabelClassifier(_BaseClassifier):
         winning = max(counts.values())
         # Ties go to the earliest class, which keeps a repeated run reproducible.
         return next(label for label in self.classes_ if counts[label] == winning)
+
+    def _most_probable(self, row: Sequence[float] | None) -> str | None:
+        if row is None:
+            return self.default_label
+        # argmax breaks ties toward the earliest class, as the vote count does.
+        return str(self.classes_[int(np.argmax(row))])
+
+    def _check_classes(self, classes: Sequence[str]) -> None:
+        backend = self._system_one()
+        if backend is not None and len(classes) > backend.max_choice_options:
+            raise ValueError(
+                f"y holds {len(classes)} classes, but {self.model!r} chooses among "
+                f"at most {backend.max_choice_options} options per question."
+            )
 
     def _check_targets(self, y: Any) -> list[str]:
         return _check_labels(y)
@@ -239,6 +319,34 @@ class _SingleLabelClassifier(_BaseClassifier):
                 f"classes {list(self.classes_)}."
             )
         return (label,)
+
+    def _questions(
+        self, examples: Sequence[tuple[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        texts = _texts_per_label(examples)
+        return {
+            _CATEGORY_ID: {
+                "type": "choice",
+                "instructions": CATEGORY_QUESTION,
+                "criteria": {
+                    label: _demonstrated(texts.get(label)) for label in self.classes_
+                },
+            }
+        }
+
+    def _read_probabilities(self, answers: Mapping[str, Any]) -> list[float]:
+        answer = answers.get(_CATEGORY_ID)
+        probabilities = (
+            answer.get("probabilities") if isinstance(answer, Mapping) else None
+        )
+        if not isinstance(probabilities, Mapping) or set(probabilities) != set(
+            self.classes_
+        ):
+            raise BackendError(
+                "The model answered without a probability per fitted class: "
+                f"{_quote(answer)}."
+            )
+        return [float(probabilities[label]) for label in self.classes_]
 
 
 class _MultiLabelClassifier(_BaseClassifier):
@@ -274,8 +382,15 @@ class _MultiLabelClassifier(_BaseClassifier):
         self.max_labels = max_labels
 
     def predict(self, X: Any) -> list[list[str]]:
-        """One label list per sample — ragged, never padded."""
-        return [self._decide(votes) for votes in self._collect_votes(X)]
+        """One label list per sample — ragged, never padded.
+
+        The labels a majority voted for, or those a System One model deems more
+        likely than not; either way the most supported first.
+        """
+        self._check_ready()
+        if self._system_one() is None:
+            return [self._decide(votes) for votes in self._collect_votes(X)]
+        return [self._applicable(row) for row in self._collect_probabilities(X)]
 
     def _check_params(self) -> None:
         super()._check_params()
@@ -291,6 +406,20 @@ class _MultiLabelClassifier(_BaseClassifier):
                 key=lambda label: -counts[label],
             )
         return chosen[: self._label_cap()]
+
+    def _applicable(self, row: Sequence[float] | None) -> list[str]:
+        if row is None:
+            return []
+        # The same bar as the vote: strictly more likely than not.
+        chosen = sorted(
+            (
+                (probability, label)
+                for label, probability in zip(self.classes_, row, strict=True)
+                if probability > 0.5
+            ),
+            key=lambda pair: -pair[0],
+        )
+        return [label for _, label in chosen[: self._label_cap()]]
 
     def _label_cap(self) -> int:
         """The cap the prompt states and the truncation backstop enforces."""
@@ -337,6 +466,37 @@ class _MultiLabelClassifier(_BaseClassifier):
             )
         return tuple(dict.fromkeys(labels))
 
+    def _questions(
+        self, examples: Sequence[tuple[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        """One yes/no question per class, all answered in the same request."""
+        texts = _texts_per_label(examples)
+        questions: dict[str, dict[str, Any]] = {}
+        for label in self.classes_:
+            question: dict[str, Any] = {
+                "type": "noul",
+                "instructions": {"category": label, "question": MEMBERSHIP_QUESTION},
+            }
+            if label in texts:
+                question["criteria"] = {"true": _demonstrated(texts[label])}
+            questions[label] = question
+        return questions
+
+    def _read_probabilities(self, answers: Mapping[str, Any]) -> list[float]:
+        row = []
+        for label in self.classes_:
+            answer = answers.get(label)
+            probability = answer.get("noul") if isinstance(answer, Mapping) else None
+            if isinstance(probability, bool) or not isinstance(
+                probability, (int, float)
+            ):
+                raise BackendError(
+                    f"The model answered without a yes/no probability for {label!r}: "
+                    f"{_quote(answer)}."
+                )
+            row.append(float(probability))
+        return row
+
 
 class _FewShotMixin(_BaseClassifier):
     """Carries fitted examples into every prompt as demonstrations."""
@@ -353,7 +513,6 @@ class _FewShotMixin(_BaseClassifier):
         ]
 
     def _demonstrations(self, texts: Sequence[str]) -> list[Sequence[tuple[str, Any]]]:
-        """Which examples to demonstrate the task with, per sample."""
         return [self.examples_] * len(texts)
 
 
@@ -466,9 +625,9 @@ class DynamicFewShotClassifier(_FewShotMixin, _SingleLabelClassifier):
             raise ValueError(
                 f"{type(self).__name__} retrieves its examples by embedding them, "
                 f"and there is no default embedding model for the {provider!r} "
-                "provider (anthropic offers no embeddings; for ollama, litellm and "
-                "custom backends the model id depends on the deployment). Pass one "
-                "explicitly, e.g. vectorizer=Vectorizer(model="
+                "provider (anthropic and typesafe offer no embeddings; for ollama, "
+                "litellm and custom backends the model id depends on the "
+                "deployment). Pass one explicitly, e.g. vectorizer=Vectorizer(model="
                 f"{DEFAULT_EMBEDDING_MODEL!r})."
             )
         return Vectorizer(
@@ -532,6 +691,20 @@ def _paired(X: Any, rows: Sequence[Any]) -> tuple[tuple[str, Any], ...]:
             "classifiers learn from labeled examples, so both must match."
         )
     return tuple(zip(texts, rows, strict=True))
+
+
+def _texts_per_label(examples: Sequence[tuple[str, Any]]) -> dict[str, list[str]]:
+    """Group demonstration texts under every label they carry."""
+    texts: dict[str, list[str]] = {}
+    for text, labels in examples:
+        for label in (labels,) if isinstance(labels, str) else labels:
+            texts.setdefault(label, []).append(text)
+    return texts
+
+
+def _demonstrated(texts: Sequence[str] | None) -> dict[str, list[str]] | None:
+    """A System One option description: its examples, or none at all."""
+    return {"examples": list(texts)} if texts else None
 
 
 def _object_schema(name: str, value: Mapping[str, Any]) -> dict[str, Any]:

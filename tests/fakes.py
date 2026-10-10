@@ -12,7 +12,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
-from skllm.backends import BaseBackend, Message, ResolvedConnection, Response, Usage
+from skllm.backends import (
+    BaseBackend,
+    Connection,
+    Message,
+    ResolvedConnection,
+    Response,
+    Usage,
+)
 
 EMBEDDING_DIM = 16
 
@@ -33,6 +40,8 @@ class FakeCall:
     messages: tuple[Message, ...] = ()
     schema: Mapping[str, Any] | None = None
     texts: tuple[str, ...] = ()
+    state: Any = None
+    questions: Mapping[str, Any] = field(default_factory=dict)
     api_key: str | None = None
     base_url: str | None = None
 
@@ -156,6 +165,46 @@ class OllamaFake(FakeBackend):
 
     provider: ClassVar[str] = "ollama"
     credential_env_var: ClassVar[str | None] = None
+
+
+class SystemOneFake(FakeBackend):
+    """A System One provider: typed questions in, JSON answers out, no text."""
+
+    provider: ClassVar[str] = "typesafe"
+    credential_env_var: ClassVar[str | None] = "TYPESAFE_API_KEY"
+    max_choice_options: ClassVar[int] = 255
+    max_score_levels: ClassVar[int] = 10
+
+    def __init__(self, answers: Script = None) -> None:
+        super().__init__()
+        self.answers_script = {} if answers is None else answers
+
+    def evaluate(
+        self,
+        model: str,
+        state: Any,
+        questions: Mapping[str, Mapping[str, Any]],
+        *,
+        params: Mapping[str, Any] | None = None,
+        connection: Connection | None = None,
+    ) -> Response[dict[str, dict[str, Any]]]:
+        settings = self.resolve(connection)
+        call = FakeCall(
+            kind="evaluate",
+            model=model,
+            params=dict(params or {}),
+            state=state,
+            questions=questions,
+            api_key=settings.api_key,
+            base_url=settings.base_url,
+        )
+
+        def answer() -> Response[dict[str, dict[str, Any]]]:
+            self._record(call)
+            content = _next(self.answers_script, call)
+            return Response(content=content, usage=_usage(str(state), ""))
+
+        return self._with_retry(answer, settings)
 
 
 def _next(script: Script, call: FakeCall) -> Any:

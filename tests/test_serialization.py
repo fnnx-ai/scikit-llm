@@ -20,6 +20,7 @@ from typing import Any
 import joblib
 import numpy as np
 import pytest
+from fnnx.handlers.local import LocalHandlerConfig
 from fnnx.runtime import Runtime
 from pydantic import BaseModel
 from sklearn.cluster import KMeans
@@ -868,7 +869,10 @@ def test_concurrent_computes_overlap_on_one_event_loop(
         return {"label": "positive"}
 
     openai.structured_script = slow
-    runtime = Runtime(bundle(fitted_classifier()))
+    runtime = Runtime(
+        bundle(fitted_classifier()),
+        handler_config=LocalHandlerConfig(n_workers=2),
+    )
 
     async def both() -> Any:
         return await asyncio.gather(
@@ -880,6 +884,36 @@ def test_concurrent_computes_overlap_on_one_event_loop(
 
     assert answers == [{"predictions": ["positive"]}] * 2
     assert max(start for start, _ in windows) < min(end for _, end in windows)
+
+
+def test_compute_async_respects_the_handler_worker_cap(
+    openai: FakeBackend, bundle: Callable[..., str]
+) -> None:
+    """``asyncio.to_thread`` would run batches on the loop's default pool,
+    invisible to the handler's ``n_workers`` cap — with the default single
+    worker, concurrent calls must serialize."""
+    windows: list[tuple[float, float]] = []
+
+    def slow(call: FakeCall) -> dict[str, str]:
+        started = time.perf_counter()
+        time.sleep(0.05)
+        windows.append((started, time.perf_counter()))
+        return {"label": "positive"}
+
+    openai.structured_script = slow
+    runtime = Runtime(bundle(fitted_classifier()))
+
+    async def both() -> Any:
+        return await asyncio.gather(
+            runtime.compute_async({"X": ["a"]}, {}),
+            runtime.compute_async({"X": ["b"]}, {}),
+        )
+
+    answers = asyncio.run(both())
+
+    assert answers == [{"predictions": ["positive"]}] * 2
+    (_, first_end), (second_start, _) = sorted(windows)
+    assert first_end <= second_start
 
 
 # --- what may be saved --------------------------------------------------------

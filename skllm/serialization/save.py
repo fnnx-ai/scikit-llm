@@ -57,7 +57,12 @@ CREDENTIAL_ATTRIBUTE_PREFIX = "credential_"
 CREDENTIAL_ENV_PREFIX = "SKLLM_CREDENTIAL_"
 
 #: Providers whose SDK is not a core dependency, and the extra that installs it.
-PROVIDER_EXTRAS = {"anthropic": "anthropic", "google": "google", "litellm": "litellm"}
+PROVIDER_EXTRAS = {
+    "anthropic": "anthropic",
+    "google": "google",
+    "litellm": "litellm",
+    "typesafe": "typesafe",
+}
 
 
 def save(estimator: Any, path: str) -> None:

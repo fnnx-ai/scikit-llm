@@ -43,6 +43,7 @@ __all__ = [
     "Message",
     "ResolvedConnection",
     "Response",
+    "SystemOneBackend",
     "Usage",
     "missing_extra",
     "named_unsupported_param",
@@ -151,6 +152,35 @@ class Backend(Protocol):
         params: Mapping[str, Any] | None = ...,
         connection: Connection | None = ...,
     ) -> Response[list[list[float]]]: ...
+
+
+@runtime_checkable
+class SystemOneBackend(Protocol):
+    """An adapter for System One models, which return typed decisions, not text.
+
+    ``evaluate`` asks questions about one ``state`` (a text, or JSON data) in a
+    single request. ``questions`` maps ids of the caller's choosing to questions
+    in the wire format — ``{"type": "choice" | "noul" | "score",
+    "instructions": ..., "criteria": ...}`` — and every answer comes back as a
+    JSON object under its question's id. Estimators that can phrase their task
+    as such questions detect this protocol and use it instead of ``structured``.
+    """
+
+    @property
+    def max_choice_options(self) -> int: ...
+
+    @property
+    def max_score_levels(self) -> int: ...
+
+    def evaluate(
+        self,
+        model: str,
+        state: Any,
+        questions: Mapping[str, Mapping[str, Any]],
+        *,
+        params: Mapping[str, Any] | None = ...,
+        connection: Connection | None = ...,
+    ) -> Response[dict[str, dict[str, Any]]]: ...
 
 
 class BaseBackend(ABC):

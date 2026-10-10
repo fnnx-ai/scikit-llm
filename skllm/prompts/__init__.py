@@ -11,15 +11,23 @@ from skllm.prompts.classification import (
 from skllm.prompts.clustering import CLUSTER_NAMING, render_exemplars
 from skllm.prompts.extraction import EXTRACTION
 from skllm.prompts.scoring import RUBRIC_SCORING
+from skllm.prompts.system_one import (
+    CATEGORY_QUESTION,
+    MEMBERSHIP_QUESTION,
+    RUBRIC_QUESTION,
+)
 from skllm.prompts.tagging import NER_TAGGING, render_entities
 from skllm.prompts.text2text import SUMMARY, TRANSLATION, render_focus
 
 __all__ = [
+    "CATEGORY_QUESTION",
     "CLUSTER_NAMING",
     "EXTRACTION",
     "FEW_SHOT_MULTI_LABEL",
     "FEW_SHOT_SINGLE_LABEL",
+    "MEMBERSHIP_QUESTION",
     "NER_TAGGING",
+    "RUBRIC_QUESTION",
     "RUBRIC_SCORING",
     "SUMMARY",
     "TRANSLATION",

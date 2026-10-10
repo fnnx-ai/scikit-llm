@@ -32,6 +32,7 @@ _BUILTIN_BACKENDS: dict[str, tuple[str, str]] = {
     "anthropic": ("skllm.backends.anthropic", "AnthropicBackend"),
     "google": ("skllm.backends.google", "GoogleBackend"),
     "litellm": ("skllm.backends.litellm", "LiteLLMBackend"),
+    "typesafe": ("skllm.backends.typesafe", "TypeSafeBackend"),
 }
 
 _BACKENDS: dict[str, Backend] = {}

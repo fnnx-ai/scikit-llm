@@ -8,6 +8,7 @@ from skllm.backends.base import (
     Message,
     ResolvedConnection,
     Response,
+    SystemOneBackend,
     Usage,
     parse_json,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "ModelRef",
     "ResolvedConnection",
     "Response",
+    "SystemOneBackend",
     "Usage",
     "available_providers",
     "get_backend",

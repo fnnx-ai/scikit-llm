@@ -13,8 +13,8 @@ dependencies = [
   "tqdm>=4.60",
 ]
 authors = [
-  { name="Oleh Kostromin", email="kostromin97@gmail.com" },
-  { name="Iryna Kondrashchenko", email="iryna230520@gmail.com" },
+  { name="Oleh Kostromin", email="oleh@dataforce.solutions" },
+  { name="Iryna Kondrashchenko", email="iryna@dataforce.solutions" },
 ]
 description = "Scikit-LLM: Seamlessly integrate powerful language models like ChatGPT into scikit-learn for enhanced text analysis tasks."
 readme = "README.md"
@@ -32,7 +32,8 @@ anthropic = ["anthropic>=0.40"]
 # which the adapter needs to constrain answers with a real JSON Schema.
 google = ["google-genai>=1.24"]
 litellm = ["litellm>=1.60"]
-all = ["scikit-llm[anthropic,google,litellm]"]
+typesafe = ["typesafe-sdk>=0.7.2"]
+all = ["scikit-llm[anthropic,google,litellm,typesafe]"]
 
 [dependency-groups]
 # The opentelemetry SDK is a test-only dependency: it exercises the optional
